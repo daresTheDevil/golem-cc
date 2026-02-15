@@ -35,7 +35,7 @@ find . -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name
 ### 2. SQL Injection Surface
 ```bash
 # String concatenation in queries (the big one)
-grep -rn "query\s*(.*+\|execute\s*(.*+\|\.query\s*(\`" \
+grep -rn "query\s*([^)]*\$\|execute\s*([^)]*\$\|\.query\s*(\`" \
   --include="*.{ts,js,php}" --exclude-dir=node_modules --exclude-dir=vendor
 ```
 

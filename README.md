@@ -7,7 +7,9 @@ AI development workflow engine for [Claude Code](https://docs.anthropic.com/clau
 
 - **Node.js** >= 18
 - **Claude Code** CLI (`claude`) installed and authenticated
-- **python3**, **jq**, **git** — on PATH
+- **jq** — required for security hooks
+- **git** — required
+- **python3** — optional (used by some tools)
 - **pnpm** recommended (npm/npx works too)
 
 ## Install
@@ -33,13 +35,25 @@ This installs:
 
 ```bash
 cd your-project
-golem init                          # auto-detects framework & databases
-golem init --nuxt --pg              # or specify explicitly
-golem init --next --oracle --mssql  # mix and match
-golem init --php --ibmi             # legacy stack support
+golem init              # auto-detects framework & databases from project files
+golem init --nuxt --pg  # explicit stack selection (skips auto-detection)
 ```
 
-This creates project-scope files: slash commands, agents, project CLAUDE.md, MCP config, and `.golem/` state directory.
+### Init Flags
+
+| Flag | Stack |
+|------|-------|
+| `--nuxt` | Nuxt 3 |
+| `--next` | Next.js (App Router) |
+| `--php` | Legacy PHP |
+| `--pg` | PostgreSQL |
+| `--oracle` | Oracle |
+| `--mssql` | SQL Server |
+| `--ibmi` | IBM i (AS400) |
+
+Without flags, auto-detection checks: `nuxt.config.*`, `next.config.*`, `composer.json`, `package.json` dependencies, and `.env.example` for database hints.
+
+This creates project-scope files: slash commands, agents, project CLAUDE.md (with linked skill references), MCP config, and `.golem/` state directory.
 
 ## Workflow
 
@@ -47,7 +61,7 @@ This creates project-scope files: slash commands, agents, project CLAUDE.md, MCP
 
 ```
 claude
-/golem-discuss "Add player journey analytics dashboard"
+/golem-discuss "Add user analytics dashboard"
 /golem-spec
 /golem-plan
 /golem-build
@@ -57,7 +71,7 @@ claude
 ### Headless (from terminal)
 
 ```bash
-golem discuss "Add player journey analytics dashboard"
+golem discuss "Add user analytics dashboard"
 golem spec
 golem plan
 golem build
@@ -68,15 +82,15 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 
 ## Commands
 
-### Workflow
+### Workflow (run in order)
 
 | Command | Description |
 |---------|-------------|
-| `golem discuss "topic"` | Interactive discovery session — explore requirements |
-| `golem spec` | Generate specification from discussion |
-| `golem plan` | Create implementation plan with task breakdown |
-| `golem build` | Autonomous execution with TDD and security scanning |
-| `golem release [patch\|minor\|major]` | Lint, test, tag, push, verify |
+| `golem discuss "topic"` | 1. Interactive discovery session — explore requirements |
+| `golem spec` | 2. Generate specification from discussion |
+| `golem plan` | 3. Create implementation plan with task breakdown |
+| `golem build` | 4. Autonomous execution with TDD and security scanning |
+| `golem release [patch\|minor\|major]` | 5. Lint, test, tag, push, verify |
 | `golem resume` | Continue an interrupted build |
 
 ### Intelligence
@@ -84,10 +98,10 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 | Command | Description |
 |---------|-------------|
 | `golem status` | Mission status report |
-| `golem sweep` | Proactive codebase health scan |
+| `golem sweep` | Proactive codebase health scan (security, quality, coverage) |
 | `golem recon` | Codebase intelligence (works before `init`) |
-| `golem diff` | Changes since last build |
-| `golem log [N]` | Mission history (last N entries) |
+| `golem diff` | Show git diff summary |
+| `golem log [N]` | Show last N build/session log entries (default: 1) |
 
 ### Maintenance
 
@@ -96,9 +110,10 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 | `golem version` | Show installed version |
 | `golem update` | Pull latest golem-cc |
 | `golem doctor` | Comprehensive installation diagnostic |
-| `golem init --update` | Refresh project templates (preserve state) |
 | `golem reset` | Clear state, keep config |
 | `golem eject` | Remove golem from project cleanly |
+| `golem uninstall` | Remove golem from this machine entirely |
+| `golem help <cmd>` | Detailed help for a specific command |
 
 ## Architecture
 
@@ -113,7 +128,7 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 **Project scope** (`.claude/`, `.golem/`, `CLAUDE.md`) — per project:
 - Slash commands customized to your stack
 - Agents that know your framework (Nuxt test-writer vs Next test-writer)
-- Project-specific database instructions
+- Project-specific database instructions and skill references
 - State tracking (specs, plans, build progress)
 
 This split prevents context window bloat. Golem loads everywhere (you always want security). Workflow commands only load where you need them.
@@ -124,12 +139,13 @@ This split prevents context window bloat. Golem loads everywhere (you always wan
 
 **Databases:** PostgreSQL, Oracle, SQL Server, IBM i (AS400)
 
-Auto-detected from `nuxt.config.*`, `next.config.*`, `*.php`, `package.json` dependencies, and `.env` files.
+Auto-detected from `nuxt.config.*`, `next.config.*`, `composer.json`, `package.json` dependencies, and `.env.example` files.
 
 ### Security
 
-- Destructive command blocking via hooks (case-insensitive: `DROP TABLE`, `rm -rf /`, etc.)
-- `.env` files denied from AI read access
+- Destructive command blocking via hooks (`DROP TABLE`, `rm -rf /`, `git push --force`, etc.)
+- Hooks require `jq` and block execution if `jq` is missing (fail-secure)
+- `.env` files denied from AI read access (`.env.example` allowed)
 - Credential/key files denied from AI read access
 - Security scanning agent active in every session
 - `semgrep` integration for static analysis (optional, recommended)
@@ -137,22 +153,27 @@ Auto-detected from `nuxt.config.*`, `next.config.*`, `*.php`, `package.json` dep
 ## Updating
 
 ```bash
-golem update                  # pull latest from npm
-golem init --update           # refresh project templates (in each project)
-golem doctor                  # verify everything
+golem update    # pull latest from npm
+golem doctor    # verify everything
 ```
 
 ## Uninstalling
 
 ```bash
 # Remove from a project
-golem eject
+golem eject --confirm
 
-# Remove user scope
-rm -rf ~/.golem
-# Then manually remove golem entries from ~/.claude/CLAUDE.md,
-# ~/.claude/settings.json, and ~/.claude/agents/security-scanner.md
+# Remove everything (user scope + CLI)
+golem uninstall --confirm
 ```
+
+`golem uninstall` restores any `.pre-golem` backup files, removes `~/.golem/`, cleans the PATH entry from your shell RC file, and removes golem-managed files from `~/.claude/`.
+
+## Roadmap
+
+- `golem init --update` — refresh project templates while preserving state
+- CLAUDE.md template variants (`--template saas`, `--template startup`)
+- Community skills registry
 
 ## License
 

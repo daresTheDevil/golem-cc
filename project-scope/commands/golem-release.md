@@ -52,15 +52,23 @@ Determine where this release is going based on the git remote:
 REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "unknown")
 echo "Remote: $REMOTE_URL"
 
-if echo "$REMOTE_URL" | grep -q "dev.pearlriverresort.com"; then
-  REMOTE_TYPE="gitea"
-  REMOTE_LABEL="Gitea (Pearl River Resort)"
-elif echo "$REMOTE_URL" | grep -q "github.com"; then
+if echo "$REMOTE_URL" | grep -q "github.com"; then
   REMOTE_TYPE="github"
-  REMOTE_LABEL="GitHub (personal)"
+  REMOTE_LABEL="GitHub"
+elif echo "$REMOTE_URL" | grep -q "gitlab.com"; then
+  REMOTE_TYPE="gitlab"
+  REMOTE_LABEL="GitLab"
 else
-  REMOTE_TYPE="other"
-  REMOTE_LABEL="$REMOTE_URL"
+  # Detect Gitea/Forgejo by checking the API (common self-hosted Git)
+  REMOTE_HOST=$(echo "$REMOTE_URL" | sed -E 's|.*://([^/]+).*|\1|; s|.*@([^:]+).*|\1|')
+  GITEA_CHECK=$(curl -s --max-time 3 "https://$REMOTE_HOST/api/v1/version" 2>/dev/null || echo "")
+  if echo "$GITEA_CHECK" | grep -q "version"; then
+    REMOTE_TYPE="gitea"
+    REMOTE_LABEL="Gitea ($REMOTE_HOST)"
+  else
+    REMOTE_TYPE="other"
+    REMOTE_LABEL="$REMOTE_URL"
+  fi
 fi
 
 echo "Release target: $REMOTE_LABEL"
@@ -398,38 +406,32 @@ if [ "$REMOTE_TYPE" = "github" ]; then
 fi
 ```
 
-**Gitea (work/Pearl River Resort projects):**
+**Gitea/Forgejo (self-hosted Git):**
 
 ```bash
 if [ "$REMOTE_TYPE" = "gitea" ]; then
-  # Extract org/repo from URL
-  GITEA_HOST="dev.pearlriverresort.com"
+  GITEA_HOST=$(echo "$REMOTE_URL" | sed -E 's|.*://([^/]+).*|\1|; s|.*@([^:]+).*|\1|')
   GITEA_REPO=$(echo "$REMOTE_URL" | sed -E 's|.*://[^/]+/||; s|\.git$||; s|^/||')
-  echo "Gitea repo: $GITEA_REPO"
+  echo "Gitea repo: $GITEA_REPO on $GITEA_HOST"
 
   # Create Gitea Release via API if token available
   GITEA_TOKEN="${GITEA_TOKEN:-}"
   if [ -n "$GITEA_TOKEN" ]; then
     echo "Creating Gitea Release..."
-    CHANGELOG_BODY=$(cat /tmp/changelog-entry.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" | sed 's/^"//;s/"$//')
+    CHANGELOG_JSON=$(node -e "console.log(JSON.stringify(require('fs').readFileSync('/tmp/changelog-entry.md','utf-8')))")
     curl -s -X POST "https://$GITEA_HOST/api/v1/repos/$GITEA_REPO/releases" \
       -H "Authorization: token $GITEA_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{
         \"tag_name\": \"$TAG\",
         \"name\": \"$TAG\",
-        \"body\": $(cat /tmp/changelog-entry.md | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+        \"body\": $CHANGELOG_JSON,
         \"draft\": false,
         \"prerelease\": false
-      }" | python3 -c "
-import sys, json
-try:
-  r = json.load(sys.stdin)
-  if 'id' in r:
-    print(f'✅ Gitea Release created: https://$GITEA_HOST/$GITEA_REPO/releases/tag/$TAG')
-  else:
-    print(f'⚠️  Gitea API response: {r}')
-except: print('⚠️  Could not parse Gitea API response')
+      }" | node -e "
+const r=JSON.parse(require('fs').readFileSync(0,'utf-8'));
+if(r.id) console.log('✅ Gitea Release created: https://$GITEA_HOST/$GITEA_REPO/releases/tag/$TAG');
+else console.log('⚠️  Gitea API response:', JSON.stringify(r));
 "
   else
     echo "ℹ️  GITEA_TOKEN not set — create release manually at:"
@@ -438,8 +440,8 @@ except: print('⚠️  Could not parse Gitea API response')
     echo "    To enable automatic releases, set GITEA_TOKEN in your environment."
   fi
 
-  # No npm publish for work projects unless explicitly requested
-  echo "ℹ️  Work project — skipping npm publish (use golem release --npm to override)"
+  # npm publish only if operator explicitly requests it
+  echo "ℹ️  Self-hosted project — skipping npm publish (use golem release --npm to override)"
 fi
 ```
 

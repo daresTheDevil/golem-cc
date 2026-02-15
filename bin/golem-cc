@@ -36,11 +36,16 @@ function ensureDir(dir) {
 
 function fileHash(filepath) {
   if (!fs.existsSync(filepath)) return null;
-  return crypto.createHash('md5').update(fs.readFileSync(filepath)).digest('hex');
+  return crypto.createHash('sha256').update(fs.readFileSync(filepath)).digest('hex');
 }
 
 // Idempotent copy (#11): skip if identical, backup if different, warn if user-modified
 function smartCopy(src, dest, { label = '' } = {}) {
+  // Symlink protection — refuse to overwrite symlinks (path traversal risk)
+  if (fs.existsSync(dest) && fs.lstatSync(dest).isSymbolicLink()) {
+    warn(`Refusing to overwrite symlink: ${dest.replace(HOME, '~')}`);
+    return 'blocked';
+  }
   const srcHash = fileHash(src);
   const destHash = fileHash(dest);
   const prettyDest = dest.replace(HOME, '~');
@@ -89,9 +94,19 @@ function copyDir(srcDir, destDir) {
   ensureDir(destDir);
   if (!fs.existsSync(srcDir)) return;
   for (const file of fs.readdirSync(srcDir)) {
+    // Path traversal protection
+    if (file.includes('..') || file.includes('/') || file.includes('\\')) {
+      warn(`Skipped suspicious filename: ${file}`);
+      continue;
+    }
     const srcFile = path.join(srcDir, file);
     const destFile = path.join(destDir, file);
-    if (fs.statSync(srcFile).isFile()) {
+    const stats = fs.lstatSync(srcFile);
+    if (stats.isSymbolicLink()) {
+      warn(`Skipped symlink: ${file}`);
+      continue;
+    }
+    if (stats.isFile()) {
       smartCopy(srcFile, destFile);
     }
   }
@@ -114,34 +129,66 @@ function writeCleanJson(src, dest) {
   const raw = fs.readFileSync(src, 'utf-8');
   let obj;
   try { obj = JSON.parse(raw); } catch { fs.copyFileSync(src, dest); return; }
-  const clean = JSON.stringify(cleanCommentKeys(obj), null, 2);
+  // Resolve ${HOME} and $HOME — Claude Code doesn't shell-expand env in JSON configs
+  const clean = JSON.stringify(cleanCommentKeys(obj), null, 2)
+    .replace(/\$\{HOME\}/g, HOME)
+    .replace(/\$HOME(?![A-Za-z0-9_])/g, HOME);
   const prettyDest = dest.replace(HOME, '~');
+  const newHash = crypto.createHash('sha256').update(clean).digest('hex');
   const destHash = fs.existsSync(dest)
-    ? crypto.createHash('md5').update(fs.readFileSync(dest)).digest('hex')
+    ? crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex')
     : null;
-  const newHash = crypto.createHash('md5').update(clean).digest('hex');
+
+  if (!destHash) {
+    fs.writeFileSync(dest, clean);
+    log(`Installed ${prettyDest}`);
+    return;
+  }
 
   if (destHash === newHash) {
     log(`${DIM}Unchanged ${prettyDest}${NC}`);
     return;
   }
 
-  if (destHash) {
-    const backupPath = dest + '.pre-golem';
-    if (!fs.existsSync(backupPath)) {
-      fs.copyFileSync(dest, backupPath);
-      warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
-    }
+  // Check if user has customized the file since last install
+  const backupPath = dest + '.pre-golem';
+  const prevHash = fs.existsSync(backupPath)
+    ? crypto.createHash('sha256').update(fs.readFileSync(backupPath)).digest('hex')
+    : null;
+
+  if (prevHash && prevHash === destHash) {
+    // User hasn't modified since last install — safe to update
+    fs.writeFileSync(dest, clean);
     log(`Updated ${prettyDest}`);
-  } else {
-    log(`Installed ${prettyDest}`);
+    return;
   }
+
+  if (prevHash) {
+    // User HAS modified — don't overwrite
+    warn(`${prettyDest} has local modifications — not overwriting`);
+    warn(`  New version saved as ${prettyDest}.new — merge manually`);
+    fs.writeFileSync(dest + '.new', clean);
+    return;
+  }
+
+  // First install over existing file — back it up
+  fs.copyFileSync(dest, backupPath);
+  warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
   fs.writeFileSync(dest, clean);
+  log(`Updated ${prettyDest}`);
 }
 
 // ============================================================================
-// Banner
+// Exports for testing — functions are available via require() without running install
 // ============================================================================
+
+module.exports = { fileHash, smartCopy, copyDir, cleanCommentKeys, writeCleanJson, ensureDir };
+
+// ============================================================================
+// Banner + Main installation — only runs when executed directly
+// ============================================================================
+
+if (require.main === module) {
 
 console.log(`
 ${BOLD}${CYAN}╔═══════════════════════════════════════════╗
@@ -149,6 +196,8 @@ ${BOLD}${CYAN}╔═════════════════════
 ║       "Let's build something."            ║
 ╚═══════════════════════════════════════════╝${NC}
 `);
+
+try {
 
 // ============================================================================
 // 1. Create directory structure
@@ -191,8 +240,10 @@ smartCopy(
 
 // ~/.claude/settings.json — Global settings, hooks, permissions
 const settingsSrc = path.join(PKG_ROOT, 'user-scope', 'settings.json');
+const settingsDest = path.join(CLAUDE_HOME, 'settings.json');
 if (fs.existsSync(settingsSrc)) {
-  writeCleanJson(settingsSrc, path.join(CLAUDE_HOME, 'settings.json'));
+  writeCleanJson(settingsSrc, settingsDest);
+  if (fs.existsSync(settingsDest)) fs.chmodSync(settingsDest, 0o600);
 }
 
 // ~/.claude/agents/security-scanner.md — Always-on security
@@ -209,6 +260,7 @@ if (fs.existsSync(mcpSrc)) {
     warn('~/.mcp.json already exists — review user-scope/mcp.json and merge manually');
   } else {
     writeCleanJson(mcpSrc, dest);
+    if (fs.existsSync(dest)) fs.chmodSync(dest, 0o600);
   }
 }
 
@@ -259,7 +311,7 @@ for (const f of ['settings.json', 'settings.local.json', 'mcp.json']) {
 
 heading('Checking PATH...');
 
-const pathLine = `\n# Super Golem\nexport PATH="$HOME/.golem/bin:$PATH"\n`;
+const pathLine = `\n# Super Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n`;
 let pathAdded = false;
 
 for (const rc of ['.zshrc', '.bashrc']) {
@@ -319,3 +371,17 @@ ${BOLD}${GREEN}═════════════════════�
     ${CYAN}golem doctor${NC}                     ${DIM}← Verify everything works${NC}
 ${pathAdded ? `\n  ${YELLOW}⚠ Restart your terminal or run: source ~/.zshrc${NC}` : ''}
 `);
+
+} catch (err) {
+  console.error(`\n${RED}Installation failed:${NC} ${err.message}`);
+  if (err.code === 'EACCES') {
+    console.error(`${YELLOW}Permission denied. Check ownership of ~/.claude/ and ~/.golem/${NC}`);
+  } else if (err.code === 'ENOSPC') {
+    console.error(`${YELLOW}Disk full. Free up space and try again.${NC}`);
+  } else {
+    console.error(`${DIM}${err.stack}${NC}`);
+  }
+  process.exit(1);
+}
+
+} // end if (require.main === module)

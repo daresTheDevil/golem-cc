@@ -8,13 +8,13 @@
     "context7": {
       "// Up-to-date docs for any library - always useful": "",
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp@latest"]
+      "args": ["-y", "@upstash/context7-mcp@^2.1.1"]
     },
 
     "memory": {
       "// Persistent memory across sessions": "",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "args": ["-y", "@modelcontextprotocol/server-memory@^2026.1.26"],
       "env": {
         "MEMORY_FILE": "${HOME}/.claude/memory.json"
       }

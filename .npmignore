@@ -1,7 +1,13 @@
 .git/
 .github/
+.golem/
 tests/
 TODO.md
+REMEDIATION.md
+findings.md
 *.tar.gz
 *.tgz
 .DS_Store
+.vscode/
+.idea/
+coverage/

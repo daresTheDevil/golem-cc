@@ -28,7 +28,10 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Read(./.env.*)",
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(./.env.development)",
+      "Read(./.env.*.local)",
       "Read(./secrets/**)",
       "Read(./**/credentials*)",
       "Read(./**/*.pem)",
@@ -49,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f .golem/state.json ] && command -v python3 >/dev/null 2>&1; then echo \"[GOLEM] Phase: $(python3 -c \"import json; print(json.load(open('.golem/state.json')).get('phase','unknown'))\" 2>/dev/null) | Tasks: $(python3 -c \"import json; s=json.load(open('.golem/state.json')); print(f\\\"{s.get('tasks_completed',0)}/{s.get('tasks_total',0)}\\\")\" 2>/dev/null)\"; fi"
+            "command": "if [ -f .golem/state.json ] && command -v jq >/dev/null 2>&1; then echo \"[GOLEM] Phase: $(jq -r '.phase // \"unknown\"' .golem/state.json) | Tasks: $(jq -r '\"\\(.tasks_completed // 0)/\\(.tasks_total // 0)\"' .golem/state.json)\"; fi"
           }
         ]
       }
@@ -61,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'rm -rf /'*|*'drop database'*|*'drop table'*|*'truncate'*|*'git push'*'--force'*|*'> /dev/'*) echo \"BLOCKED: Destructive command detected.\" >&2; exit 2;; *) exit 0;; esac; }"
+            "command": "command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' \"$cmd\" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case \"$cmd_lower\" in *'rm -rf'*'/'*|*'rm -r '*'/'*|*'rm --recursive'*'/'*|*'rm -rf ~'*|*'rm -r ~'*|*'drop database'*|*'drop schema'*|*'drop table'*|*'truncate '*|*'> /dev/'*|*'mkfs'*|*'dd if'*) echo 'BLOCKED: Destructive command detected' >&2; exit 2;; *) exit 0;; esac; }"
           }
         ]
       },
@@ -70,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'git push'*origin*main*|*'git push'*origin*master*) echo 'BLOCKED: Direct push to main/master. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }"
+            "command": "command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' \"$cmd\" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case \"$cmd_lower\" in *'git push'*origin*main*|*'git push'*origin*master*|*'git push'*'--force'*|*'git push'*'-f '*) echo 'BLOCKED: Direct push to main/master or force push. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }"
           }
         ]
       }

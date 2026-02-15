@@ -1,7 +1,7 @@
 ---
 name: db-explorer
 description: Explores database schemas across PostgreSQL, Oracle, SQL Server, and IBM i. Use for schema discovery, query building, and data investigation. READ-ONLY operations only.
-tools: Read, Bash, Grep, Glob, WebSearch
+tools: Read, Grep, Glob, WebSearch
 model: sonnet
 color: gold
 ---

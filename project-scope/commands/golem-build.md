@@ -167,9 +167,9 @@ If any phase fails 3 consecutive times:
    ## Impact on remaining tasks:
    [which tasks depend on this one]
    ```
-3. Check dependency chain:
-   - Independent next task → skip blocked task, continue build
-   - Dependent next task → HALT entire build, report status
+3. HALT the entire build. Do not continue to the next task.
+4. Update state.json with `"phase": "blocked"`
+5. Report to the operator with: what failed, why, what you tried, what to try next
 
 ## COMPLETION — Post-Mission Debrief
 

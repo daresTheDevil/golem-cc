@@ -288,7 +288,7 @@ function cmdInit(args = []) {
     if (flags.has('nuxt')) projectType = 'Nuxt';
     else if (flags.has('next')) projectType = 'Next.js';
     else if (flags.has('php')) projectType = 'PHP';
-    else if (fs.existsSync(path.join(process.cwd(), 'nuxt.config.ts'))) projectType = 'Nuxt';
+    else if (fs.existsSync(path.join(process.cwd(), 'nuxt.config.ts')) || fs.existsSync(path.join(process.cwd(), 'nuxt.config.js')) || fs.existsSync(path.join(process.cwd(), 'nuxt.config.mjs'))) projectType = 'Nuxt';
     else if (fs.existsSync(path.join(process.cwd(), 'next.config.js')) || fs.existsSync(path.join(process.cwd(), 'next.config.ts'))) projectType = 'Next.js';
     else if (fs.existsSync(path.join(process.cwd(), 'composer.json'))) projectType = 'PHP';
     else if (fs.existsSync(path.join(process.cwd(), 'package.json'))) projectType = 'Node.js';
@@ -453,7 +453,8 @@ function cmdUpdate() {
   process.exit(result.status ?? 1);
 }
 
-function cmdUninstall(args = []) {
+function cmdUninstall(args = [], { home } = {}) {
+  const _home = home || HOME;
   if (!args.includes('--confirm') && !args.includes('-y')) {
     console.log(`\n${BOLD}${YELLOW}Golem Uninstall${NC}\n`);
     console.log(`This will:`);
@@ -464,8 +465,8 @@ function cmdUninstall(args = []) {
     return;
   }
 
-  const CLAUDE_HOME = path.join(HOME, '.claude');
-  const GOLEM_HOME_DIR = path.join(HOME, '.golem');
+  const CLAUDE_HOME = path.join(_home, '.claude');
+  const GOLEM_HOME_DIR = path.join(_home, '.golem');
 
   // 1. Restore .pre-golem backups in ~/.claude/
   if (fs.existsSync(CLAUDE_HOME)) {
@@ -478,7 +479,7 @@ function cmdUninstall(args = []) {
         if (file.endsWith('.pre-golem')) {
           const original = full.replace(/\.pre-golem$/, '');
           fs.renameSync(full, original);
-          console.log(`  ${GREEN}Restored${NC} ${original.replace(HOME, '~')}`);
+          console.log(`  ${GREEN}Restored${NC} ${original.replace(_home, '~')}`);
         }
       }
     };
@@ -492,7 +493,7 @@ function cmdUninstall(args = []) {
         if (stat.isDirectory()) { cleanNewFiles(full); continue; }
         if (file.endsWith('.new')) {
           fs.unlinkSync(full);
-          console.log(`  ${DIM}Removed${NC}   ${full.replace(HOME, '~')}`);
+          console.log(`  ${DIM}Removed${NC}   ${full.replace(_home, '~')}`);
         }
       }
     };
@@ -507,7 +508,7 @@ function cmdUninstall(args = []) {
 
   // 3. Remove PATH entry from shell RC files
   for (const rc of ['.zshrc', '.bashrc']) {
-    const rcPath = path.join(HOME, rc);
+    const rcPath = path.join(_home, rc);
     if (!fs.existsSync(rcPath)) continue;
     const content = fs.readFileSync(rcPath, 'utf-8');
     if (content.includes('.golem/bin')) {

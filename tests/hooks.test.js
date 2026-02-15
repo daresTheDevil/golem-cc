@@ -1,23 +1,22 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('child_process');
+const path = require('path');
 
 // ============================================================================
-// Hook tests — run the actual shell commands from settings.json PreToolUse hooks
-// as subprocesses to verify they block/allow correctly.
+// Hook tests — run the actual .sh hook scripts as subprocesses
+// to verify they block/allow correctly.
 //
 // The hooks read JSON from stdin via jq and check .tool_input.command
 // ============================================================================
 
-// The destructive command blocker hook (extracted from user-scope/settings.json)
-const DESTRUCTIVE_HOOK = `command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case "$cmd_lower" in *'rm -rf'*'/'*|*'rm -r '*'/'*|*'rm --recursive'*'/'*|*'rm -rf ~'*|*'rm -r ~'*|*'drop database'*|*'drop schema'*|*'drop table'*|*'truncate '*|*'> /dev/'*|*'mkfs'*|*'dd if'*) echo 'BLOCKED: Destructive command detected' >&2; exit 2;; *) exit 0;; esac; }`;
+const HOOKS_DIR = path.join(__dirname, '..', 'hooks');
+const DESTRUCTIVE_HOOK = path.join(HOOKS_DIR, 'block-destructive.sh');
+const PUSH_HOOK = path.join(HOOKS_DIR, 'block-push-main.sh');
 
-// The push blocker hook
-const PUSH_HOOK = `command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case "$cmd_lower" in *'git push'*origin*main*|*'git push'*origin*master*|*'git push'*'--force'*|*'git push'*'-f '*) echo 'BLOCKED: Direct push to main/master or force push. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }`;
-
-function runHook(hookCmd, toolCommand) {
+function runHook(hookPath, toolCommand) {
   const input = JSON.stringify({ tool_input: { command: toolCommand } });
-  const result = spawnSync('bash', ['-c', hookCmd], {
+  const result = spawnSync('bash', [hookPath], {
     input,
     stdio: ['pipe', 'pipe', 'pipe'],
     timeout: 5000,
@@ -46,6 +45,16 @@ describe('Destructive command blocker hook', { skip: !jqAvailable() && 'jq not i
     assert.ok(r.stderr.includes('BLOCKED'));
   });
 
+  it('blocks rm -r /home', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'rm -r /home/user');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks rm --recursive', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'rm --recursive /var/data');
+    assert.strictEqual(r.status, 2);
+  });
+
   it('blocks drop database', () => {
     const r = runHook(DESTRUCTIVE_HOOK, 'psql -c "DROP DATABASE production"');
     assert.strictEqual(r.status, 2);
@@ -58,6 +67,16 @@ describe('Destructive command blocker hook', { skip: !jqAvailable() && 'jq not i
 
   it('blocks DROP TABLE (case insensitive)', () => {
     const r = runHook(DESTRUCTIVE_HOOK, 'psql -c "DROP TABLE users"');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks dd if=', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'dd if=/dev/zero of=/dev/sda');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks mkfs', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'mkfs.ext4 /dev/sda1');
     assert.strictEqual(r.status, 2);
   });
 
@@ -115,33 +134,32 @@ describe('Push blocker hook', { skip: !jqAvailable() && 'jq not installed' }, ()
 });
 
 // ============================================================================
-// jq requirement
+// jq requirement — hooks must block (exit 2) when jq is missing
 // ============================================================================
 
 describe('Hook jq requirement', () => {
-  it('blocks (exit 2) when jq is not in PATH', () => {
-    // Run a simplified version of the jq-check portion with a PATH that has bash builtins but not jq
-    // We need bash itself to be findable, so we keep /usr/bin but remove jq's location
+  it('block-destructive.sh exits 2 when jq is not in PATH', () => {
     const input = JSON.stringify({ tool_input: { command: 'ls' } });
-    // Use a wrapper that unsets jq from PATH by only including /usr/bin (bash builtins)
-    const hookWithBadPath = `export PATH=/usr/bin:/bin; command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; echo 'should not reach here'; exit 0`;
-    const result = spawnSync('bash', ['-c', hookWithBadPath], {
+    // Run the hook with PATH stripped to exclude jq
+    const result = spawnSync('/bin/bash', [DESTRUCTIVE_HOOK], {
       input,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
+      env: { PATH: '/nonexistent' },
     });
-    // On systems where jq IS in /usr/bin or /bin, this test verifies the pattern works.
-    // If jq is found there, we skip the assertion (jq is always available on this system).
-    const jqInBasePaths = spawnSync('bash', ['-c', 'export PATH=/usr/bin:/bin; command -v jq'], { stdio: 'pipe' });
-    if (jqInBasePaths.status !== 0) {
-      assert.strictEqual(result.status, 2, 'should exit 2 when jq missing');
-      assert.ok(result.stderr.toString().includes('jq required'));
-    } else {
-      // jq is in /usr/bin or /bin — test the pattern with truly empty PATH via a subshell
-      const result2 = spawnSync('/bin/bash', ['-c',
-        'unset PATH; command -v jq >/dev/null 2>&1 || { echo "BLOCKED: jq required" >&2; exit 2; }; exit 0'
-      ], { stdio: ['pipe', 'pipe', 'pipe'], timeout: 5000 });
-      assert.strictEqual(result2.status, 2, 'should exit 2 when jq is not findable');
-    }
+    assert.strictEqual(result.status, 2, 'should exit 2 when jq missing');
+    assert.ok(result.stderr.toString().includes('jq required'));
+  });
+
+  it('block-push-main.sh exits 2 when jq is not in PATH', () => {
+    const input = JSON.stringify({ tool_input: { command: 'ls' } });
+    const result = spawnSync('/bin/bash', [PUSH_HOOK], {
+      input,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 5000,
+      env: { PATH: '/nonexistent' },
+    });
+    assert.strictEqual(result.status, 2, 'should exit 2 when jq missing');
+    assert.ok(result.stderr.toString().includes('jq required'));
   });
 });

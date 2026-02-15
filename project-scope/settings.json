@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' \"$cmd\" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case \"$cmd_lower\" in *'rm -rf'*'/'*|*'rm -r '*'/'*|*'rm --recursive'*'/'*|*'rm -rf ~'*|*'rm -r ~'*|*'drop database'*|*'drop schema'*|*'drop table'*|*'truncate '*|*'> /dev/'*|*'mkfs'*|*'dd if'*) echo 'BLOCKED: Destructive command detected' >&2; exit 2;; *) exit 0;; esac; }"
+            "command": "~/.golem/hooks/block-destructive.sh"
           }
         ]
       },
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || { echo 'BLOCKED: jq required for safety hooks. Install jq.' >&2; exit 2; }; jq -r '.tool_input.command // empty' | { IFS= read -r -d '' cmd || true; cmd_lower=$(printf '%s' \"$cmd\" | tr '[:upper:]' '[:lower:]' | tr '\\n' ' '); case \"$cmd_lower\" in *'git push'*origin*main*|*'git push'*origin*master*|*'git push'*'--force'*|*'git push'*'-f '*) echo 'BLOCKED: Direct push to main/master or force push. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }"
+            "command": "~/.golem/hooks/block-push-main.sh"
           }
         ]
       }

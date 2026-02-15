@@ -1,0 +1,93 @@
+{
+  "// SUPER GOLEM - Project-Level Settings": "",
+  "// Location: .claude/settings.json (checked into git)": "",
+
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx nuxi:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(php -l:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(semgrep:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm install:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(jq:*)",
+      "Read(.golem/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/credentials*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)"
+    ]
+  },
+
+  "env": {
+    "MAX_THINKING_TOKENS": "16000",
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",
+    "BASH_MAX_TIMEOUT_MS": "600000"
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .golem/state.json ] && command -v python3 >/dev/null 2>&1; then echo \"[GOLEM] Phase: $(python3 -c \"import json; print(json.load(open('.golem/state.json')).get('phase','unknown'))\" 2>/dev/null) | Tasks: $(python3 -c \"import json; s=json.load(open('.golem/state.json')); print(f\\\"{s.get('tasks_completed',0)}/{s.get('tasks_total',0)}\\\")\" 2>/dev/null)\"; fi"
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'rm -rf /'*|*'drop database'*|*'drop table'*|*'truncate'*|*'git push'*'--force'*|*'> /dev/'*) echo \"BLOCKED: Destructive command detected.\" >&2; exit 2;; *) exit 0;; esac; }"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'git push'*origin*main*|*'git push'*origin*master*) echo 'BLOCKED: Direct push to main/master. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }"
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | { read f; if [ -n \"$f\" ]; then mkdir -p .golem/logs 2>/dev/null; echo \"$(date +%Y-%m-%dT%H:%M:%S) $f\" >> .golem/logs/file-changes.log 2>/dev/null; fi; exit 0; }"
+          }
+        ]
+      }
+    ]
+  },
+
+  "enableAllProjectMcpServers": true
+}

@@ -1,0 +1,23 @@
+{
+  "// SUPER GOLEM - Global MCP Servers": "",
+  "// Location: ~/.mcp.json": "",
+  "// Available in every Claude Code session": "",
+
+  "mcpServers": {
+
+    "context7": {
+      "// Up-to-date docs for any library - always useful": "",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+
+    "memory": {
+      "// Persistent memory across sessions": "",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_FILE": "${HOME}/.claude/memory.json"
+      }
+    }
+  }
+}

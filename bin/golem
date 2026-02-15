@@ -1,0 +1,426 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execSync, spawnSync } = require('child_process');
+
+// ============================================================================
+// golem — CLI dispatcher
+// ============================================================================
+
+const HOME = os.homedir();
+const GOLEM_HOME = process.env.GOLEM_HOME || path.join(HOME, '.golem');
+const VERSION_FILE = path.join(GOLEM_HOME, 'version');
+
+const GREEN = '\x1b[32m';
+const YELLOW = '\x1b[33m';
+const RED = '\x1b[31m';
+const CYAN = '\x1b[36m';
+const BOLD = '\x1b[1m';
+const DIM = '\x1b[2m';
+const NC = '\x1b[0m';
+
+function getVersion() {
+  try { return fs.readFileSync(VERSION_FILE, 'utf-8').trim(); } catch { return 'unknown'; }
+}
+
+// ============================================================================
+// Command definitions
+// ============================================================================
+
+const WORKFLOW_COMMANDS = {
+  discuss: 'Start a discussion about the project',
+  spec: 'Write or refine a specification',
+  plan: 'Create an implementation plan',
+  build: 'Execute the build loop (Red/Green/Refactor/Secure)',
+  release: 'Cut a release',
+  resume: 'Resume the last golem session',
+};
+
+const INTELLIGENCE_COMMANDS = {
+  status: 'Show current golem state and progress',
+  sweep: 'Run a security sweep',
+  recon: 'Reconnaissance — analyze codebase',
+  diff: 'Show git diff summary',
+  log: 'Show golem build/session logs',
+};
+
+const MAINTENANCE_COMMANDS = {
+  version: 'Show golem version',
+  update: 'Update golem to latest version',
+  doctor: 'Run diagnostics',
+  init: 'Initialize golem in a project',
+  reset: 'Reset golem state for this project',
+  eject: 'Remove golem from this project (keeps code)',
+};
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function hasCommand(cmd) {
+  try {
+    execSync(`command -v ${cmd}`, { stdio: 'pipe' });
+    return true;
+  } catch { return false; }
+}
+
+function claudeSlashCommand(name, args) {
+  if (!hasCommand('claude')) {
+    console.error(`${RED}Error: claude CLI not found. Install it first: https://docs.anthropic.com/en/docs/claude-code${NC}`);
+    process.exit(1);
+  }
+  const slashCmd = `/golem-${name}` + (args ? ` ${args}` : '');
+  const result = spawnSync('claude', ['-p', slashCmd], {
+    stdio: 'inherit',
+    cwd: process.cwd(),
+  });
+  process.exit(result.status || 0);
+}
+
+function printHelp() {
+  console.log(`
+${BOLD}${CYAN}Super Golem v${getVersion()}${NC}
+${DIM}"Let's build something."${NC}
+
+${BOLD}Usage:${NC} golem <command> [arguments]
+
+${BOLD}Workflow:${NC}`);
+  for (const [cmd, desc] of Object.entries(WORKFLOW_COMMANDS)) {
+    console.log(`  ${GREEN}${cmd.padEnd(12)}${NC} ${desc}`);
+  }
+  console.log(`\n${BOLD}Intelligence:${NC}`);
+  for (const [cmd, desc] of Object.entries(INTELLIGENCE_COMMANDS)) {
+    console.log(`  ${CYAN}${cmd.padEnd(12)}${NC} ${desc}`);
+  }
+  console.log(`\n${BOLD}Maintenance:${NC}`);
+  for (const [cmd, desc] of Object.entries(MAINTENANCE_COMMANDS)) {
+    console.log(`  ${YELLOW}${cmd.padEnd(12)}${NC} ${desc}`);
+  }
+  console.log();
+}
+
+// ============================================================================
+// Command implementations
+// ============================================================================
+
+function cmdVersion() {
+  console.log(`golem v${getVersion()}`);
+}
+
+function cmdDoctor() {
+  console.log(`\n${BOLD}${CYAN}Golem Doctor${NC}\n`);
+  const checks = [];
+
+  // Node version
+  const nodeVer = process.version;
+  const major = parseInt(nodeVer.slice(1));
+  checks.push({ name: 'Node.js >= 18', ok: major >= 18, detail: nodeVer });
+
+  // claude CLI
+  checks.push({ name: 'claude CLI', ok: hasCommand('claude'), detail: hasCommand('claude') ? 'found' : 'not found' });
+
+  // git
+  checks.push({ name: 'git', ok: hasCommand('git'), detail: hasCommand('git') ? 'found' : 'not found' });
+
+  // python3
+  checks.push({ name: 'python3', ok: hasCommand('python3'), detail: hasCommand('python3') ? 'found' : 'not found (optional)' });
+
+  // jq
+  checks.push({ name: 'jq', ok: hasCommand('jq'), detail: hasCommand('jq') ? 'found' : 'not found (optional)' });
+
+  // semgrep
+  const hasSemgrep = hasCommand('semgrep');
+  checks.push({ name: 'semgrep', ok: hasSemgrep, detail: hasSemgrep ? 'found' : 'not found (optional)', optional: true });
+
+  // Golem home
+  const homeExists = fs.existsSync(GOLEM_HOME);
+  checks.push({ name: 'GOLEM_HOME', ok: homeExists, detail: homeExists ? GOLEM_HOME : 'missing' });
+
+  // Version file
+  const versionExists = fs.existsSync(VERSION_FILE);
+  checks.push({ name: 'Version stamp', ok: versionExists, detail: versionExists ? getVersion() : 'missing' });
+
+  // Claude home
+  const claudeHome = path.join(HOME, '.claude');
+  const claudeMd = path.join(claudeHome, 'CLAUDE.md');
+  checks.push({ name: '~/.claude/CLAUDE.md', ok: fs.existsSync(claudeMd), detail: fs.existsSync(claudeMd) ? 'found' : 'missing' });
+
+  // Templates
+  const templatesDir = path.join(GOLEM_HOME, 'templates');
+  checks.push({ name: 'Templates', ok: fs.existsSync(templatesDir), detail: fs.existsSync(templatesDir) ? 'installed' : 'missing' });
+
+  // Print results
+  let allOk = true;
+  for (const c of checks) {
+    const icon = c.ok ? `${GREEN}OK${NC}` : (c.optional ? `${YELLOW}--${NC}` : `${RED}FAIL${NC}`);
+    console.log(`  ${icon}  ${c.name.padEnd(22)} ${DIM}${c.detail}${NC}`);
+    if (!c.ok && !c.optional) allOk = false;
+  }
+
+  console.log();
+  if (allOk) {
+    console.log(`  ${GREEN}All required checks passed.${NC}\n`);
+  } else {
+    console.log(`  ${RED}Some required checks failed. Run 'pnpm dlx golem-cc' to reinstall.${NC}\n`);
+    process.exit(1);
+  }
+}
+
+function cmdInit() {
+  console.log(`\n${BOLD}${CYAN}Initializing golem in ${process.cwd()}${NC}\n`);
+
+  // Create .claude and .golem dirs
+  for (const dir of ['.claude/commands', '.claude/agents', '.golem/logs', '.golem/plans']) {
+    fs.mkdirSync(path.join(process.cwd(), dir), { recursive: true });
+    console.log(`  ${GREEN}Created${NC} ${dir}/`);
+  }
+
+  // Copy templates
+  const templatesDir = path.join(GOLEM_HOME, 'templates');
+  if (!fs.existsSync(templatesDir)) {
+    console.error(`${RED}Templates not found at ${templatesDir}. Run 'pnpm dlx golem-cc' first.${NC}`);
+    process.exit(1);
+  }
+
+  // Commands
+  const commandsSrc = path.join(templatesDir, 'commands');
+  if (fs.existsSync(commandsSrc)) {
+    for (const file of fs.readdirSync(commandsSrc)) {
+      const dest = path.join(process.cwd(), '.claude', 'commands', file);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(path.join(commandsSrc, file), dest);
+        console.log(`  ${GREEN}Installed${NC} .claude/commands/${file}`);
+      } else {
+        console.log(`  ${DIM}Exists${NC}    .claude/commands/${file}`);
+      }
+    }
+  }
+
+  // Agents
+  const agentsSrc = path.join(templatesDir, 'agents');
+  if (fs.existsSync(agentsSrc)) {
+    for (const file of fs.readdirSync(agentsSrc)) {
+      const dest = path.join(process.cwd(), '.claude', 'agents', file);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(path.join(agentsSrc, file), dest);
+        console.log(`  ${GREEN}Installed${NC} .claude/agents/${file}`);
+      } else {
+        console.log(`  ${DIM}Exists${NC}    .claude/agents/${file}`);
+      }
+    }
+  }
+
+  // settings.json
+  const settingsSrc = path.join(templatesDir, 'settings.json');
+  const settingsDest = path.join(process.cwd(), '.claude', 'settings.json');
+  if (fs.existsSync(settingsSrc) && !fs.existsSync(settingsDest)) {
+    fs.copyFileSync(settingsSrc, settingsDest);
+    console.log(`  ${GREEN}Installed${NC} .claude/settings.json`);
+  }
+
+  // mcp.json
+  const mcpSrc = path.join(templatesDir, 'mcp.json');
+  const mcpDest = path.join(process.cwd(), '.mcp.json');
+  if (fs.existsSync(mcpSrc) && !fs.existsSync(mcpDest)) {
+    fs.copyFileSync(mcpSrc, mcpDest);
+    console.log(`  ${GREEN}Installed${NC} .mcp.json`);
+  }
+
+  // Initialize state
+  const stateDest = path.join(process.cwd(), '.golem', 'state.json');
+  if (!fs.existsSync(stateDest)) {
+    fs.writeFileSync(stateDest, JSON.stringify({
+      phase: 'initialized',
+      tasks_completed: 0,
+      tasks_total: 0,
+      created: new Date().toISOString(),
+    }, null, 2));
+    console.log(`  ${GREEN}Created${NC}   .golem/state.json`);
+  }
+
+  // CLAUDE.md
+  const claudeMdDest = path.join(process.cwd(), 'CLAUDE.md');
+  if (!fs.existsSync(claudeMdDest)) {
+    // Auto-detect project type
+    let projectType = 'project';
+    if (fs.existsSync(path.join(process.cwd(), 'nuxt.config.ts'))) projectType = 'Nuxt';
+    else if (fs.existsSync(path.join(process.cwd(), 'next.config.js')) || fs.existsSync(path.join(process.cwd(), 'next.config.ts'))) projectType = 'Next.js';
+    else if (fs.existsSync(path.join(process.cwd(), 'composer.json'))) projectType = 'PHP';
+    else if (fs.existsSync(path.join(process.cwd(), 'package.json'))) projectType = 'Node.js';
+
+    fs.writeFileSync(claudeMdDest, `# ${path.basename(process.cwd())}
+
+## Project Type
+${projectType}
+
+## Conventions
+- Follow existing code style
+- Write tests for new features
+- Use conventional commits
+
+## Environment
+- See .env.example for required variables
+`);
+    console.log(`  ${GREEN}Created${NC}   CLAUDE.md (detected: ${projectType})`);
+  }
+
+  // .env.example
+  const envExDest = path.join(process.cwd(), '.env.example');
+  if (!fs.existsSync(envExDest)) {
+    fs.writeFileSync(envExDest, '# Add your environment variables here\n');
+    console.log(`  ${GREEN}Created${NC}   .env.example`);
+  }
+
+  // Ensure .gitignore has .env
+  const gitignorePath = path.join(process.cwd(), '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    const content = fs.readFileSync(gitignorePath, 'utf-8');
+    const additions = [];
+    if (!content.includes('.env')) additions.push('.env');
+    if (!content.includes('.golem/')) additions.push('.golem/');
+    if (additions.length > 0) {
+      fs.appendFileSync(gitignorePath, '\n' + additions.join('\n') + '\n');
+      console.log(`  ${GREEN}Updated${NC}   .gitignore (added: ${additions.join(', ')})`);
+    }
+  }
+
+  console.log(`\n  ${BOLD}${GREEN}Project initialized.${NC} Run ${CYAN}claude${NC} to start.\n`);
+}
+
+function cmdStatus() {
+  const stateFile = path.join(process.cwd(), '.golem', 'state.json');
+  if (!fs.existsSync(stateFile)) {
+    console.log(`${YELLOW}No golem state found. Run 'golem init' first.${NC}`);
+    process.exit(1);
+  }
+  const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+  console.log(`\n${BOLD}Golem Status${NC}`);
+  console.log(`  Phase:     ${state.phase || 'unknown'}`);
+  console.log(`  Tasks:     ${state.tasks_completed || 0}/${state.tasks_total || 0}`);
+  console.log(`  Created:   ${state.created || 'unknown'}`);
+
+  // Show git info
+  try {
+    const branch = execSync('git branch --show-current', { stdio: 'pipe', cwd: process.cwd() }).toString().trim();
+    const status = execSync('git status --short', { stdio: 'pipe', cwd: process.cwd() }).toString().trim();
+    console.log(`  Branch:    ${branch}`);
+    console.log(`  Git:       ${status ? status.split('\n').length + ' changed files' : 'clean'}`);
+  } catch { /* not a git repo */ }
+  console.log();
+}
+
+function cmdReset() {
+  const golemDir = path.join(process.cwd(), '.golem');
+  if (!fs.existsSync(golemDir)) {
+    console.log(`${YELLOW}No .golem directory found.${NC}`);
+    return;
+  }
+  const stateFile = path.join(golemDir, 'state.json');
+  if (fs.existsSync(stateFile)) {
+    fs.writeFileSync(stateFile, JSON.stringify({
+      phase: 'initialized',
+      tasks_completed: 0,
+      tasks_total: 0,
+      created: new Date().toISOString(),
+    }, null, 2));
+  }
+  // Clear logs
+  const logsDir = path.join(golemDir, 'logs');
+  if (fs.existsSync(logsDir)) {
+    for (const f of fs.readdirSync(logsDir)) {
+      fs.unlinkSync(path.join(logsDir, f));
+    }
+  }
+  console.log(`${GREEN}Golem state reset.${NC}`);
+}
+
+function cmdEject() {
+  const golemDir = path.join(process.cwd(), '.golem');
+  if (fs.existsSync(golemDir)) {
+    fs.rmSync(golemDir, { recursive: true });
+    console.log(`${GREEN}Removed${NC} .golem/`);
+  }
+  // Don't remove .claude — it has user's commands and settings
+  console.log(`${DIM}.claude/ left intact (contains your commands and settings).${NC}`);
+  console.log(`${GREEN}Golem ejected. Your code is untouched.${NC}`);
+}
+
+function cmdUpdate() {
+  console.log(`${CYAN}Updating golem...${NC}`);
+  const result = spawnSync('pnpm', ['dlx', 'golem-cc@latest'], {
+    stdio: 'inherit',
+    cwd: HOME,
+  });
+  process.exit(result.status || 0);
+}
+
+function cmdLog() {
+  const logsDir = path.join(process.cwd(), '.golem', 'logs');
+  if (!fs.existsSync(logsDir)) {
+    console.log(`${YELLOW}No logs found. Run 'golem init' first.${NC}`);
+    return;
+  }
+  const files = fs.readdirSync(logsDir).sort().reverse();
+  if (files.length === 0) {
+    console.log(`${DIM}No log entries yet.${NC}`);
+    return;
+  }
+  // Show the most recent log
+  const latest = path.join(logsDir, files[0]);
+  console.log(`${BOLD}Latest log: ${files[0]}${NC}\n`);
+  console.log(fs.readFileSync(latest, 'utf-8'));
+}
+
+function cmdDiff() {
+  if (!hasCommand('git')) {
+    console.error(`${RED}git not found.${NC}`);
+    process.exit(1);
+  }
+  const result = spawnSync('git', ['diff', '--stat'], { stdio: 'inherit', cwd: process.cwd() });
+  process.exit(result.status || 0);
+}
+
+// ============================================================================
+// Dispatch
+// ============================================================================
+
+const [,, command, ...args] = process.argv;
+const argsStr = args.join(' ');
+
+if (!command || command === 'help' || command === '--help' || command === '-h') {
+  printHelp();
+  process.exit(0);
+}
+
+// Workflow commands → shell out to claude with slash command
+if (command in WORKFLOW_COMMANDS) {
+  if (command === 'discuss' && !argsStr.trim()) {
+    console.error(`${RED}Usage: golem discuss "your topic here"${NC}`);
+    process.exit(1);
+  }
+  claudeSlashCommand(command, argsStr);
+}
+
+// Intelligence commands
+switch (command) {
+  case 'status': cmdStatus(); break;
+  case 'sweep': claudeSlashCommand('sweep', argsStr); break;
+  case 'recon': claudeSlashCommand('recon', argsStr); break;
+  case 'diff': cmdDiff(); break;
+  case 'log': cmdLog(); break;
+
+  // Maintenance commands
+  case 'version': case '--version': case '-v': cmdVersion(); break;
+  case 'doctor': cmdDoctor(); break;
+  case 'init': cmdInit(); break;
+  case 'reset': cmdReset(); break;
+  case 'eject': cmdEject(); break;
+  case 'update': cmdUpdate(); break;
+
+  default:
+    console.error(`${RED}Unknown command: ${command}${NC}\n`);
+    printHelp();
+    process.exit(1);
+}

@@ -1,0 +1,7 @@
+.git/
+.github/
+tests/
+TODO.md
+*.tar.gz
+*.tgz
+.DS_Store

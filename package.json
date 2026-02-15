@@ -1,0 +1,42 @@
+{
+  "name": "golem-cc",
+  "version": "1.0.0",
+  "description": "Super Golem — AI development workflow engine for Claude Code. Your force multiplier.",
+  "bin": {
+    "golem-cc": "./bin/golem-cc"
+  },
+  "files": [
+    "bin/",
+    "user-scope/",
+    "project-scope/",
+    "skills/",
+    "hooks/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude",
+    "ai",
+    "development-workflow",
+    "ai-coding",
+    "tdd",
+    "security",
+    "automation",
+    "cli",
+    "anthropic"
+  ],
+  "author": "David @ Pearl River Resort",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daresTheDevil/golem-cc.git"
+  },
+  "homepage": "https://github.com/daresTheDevil/golem-cc#readme",
+  "bugs": {
+    "url": "https://github.com/daresTheDevil/golem-cc/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,321 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
+
+// ============================================================================
+// golem-cc — User Scope Installer
+// Run: pnpm dlx golem-cc
+// ============================================================================
+
+const HOME = os.homedir();
+const GOLEM_HOME = path.join(HOME, '.golem');
+const CLAUDE_HOME = path.join(HOME, '.claude');
+const PKG_ROOT = path.resolve(__dirname, '..');
+
+// Read version from package.json (#10)
+const PKG_VERSION = require(path.join(PKG_ROOT, 'package.json')).version;
+
+const GREEN = '\x1b[32m';
+const YELLOW = '\x1b[33m';
+const CYAN = '\x1b[36m';
+const BOLD = '\x1b[1m';
+const DIM = '\x1b[2m';
+const NC = '\x1b[0m';
+
+function log(msg) { console.log(`${GREEN}[golem]${NC} ${msg}`); }
+function warn(msg) { console.log(`${YELLOW}[golem]${NC} ${msg}`); }
+function heading(msg) { console.log(`\n${BOLD}${CYAN}${msg}${NC}`); }
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function fileHash(filepath) {
+  if (!fs.existsSync(filepath)) return null;
+  return crypto.createHash('md5').update(fs.readFileSync(filepath)).digest('hex');
+}
+
+// Idempotent copy (#11): skip if identical, backup if different, warn if user-modified
+function smartCopy(src, dest, { label = '' } = {}) {
+  const srcHash = fileHash(src);
+  const destHash = fileHash(dest);
+  const prettyDest = dest.replace(HOME, '~');
+
+  if (!destHash) {
+    // New file
+    fs.copyFileSync(src, dest);
+    log(`Installed ${prettyDest}`);
+    return 'installed';
+  }
+
+  if (srcHash === destHash) {
+    // Identical
+    log(`${DIM}Unchanged ${prettyDest}${NC}`);
+    return 'unchanged';
+  }
+
+  // File exists and differs — check if it was our previous install
+  const backupPath = dest + '.pre-golem';
+  const prevHash = fileHash(backupPath);
+
+  if (prevHash && prevHash === destHash) {
+    // Dest matches the pre-golem backup (user hasn't modified it since last install)
+    fs.copyFileSync(src, dest);
+    log(`Updated ${prettyDest}`);
+    return 'updated';
+  }
+
+  if (prevHash) {
+    // Dest differs from both src AND backup — user has customized it
+    warn(`${prettyDest} has local modifications — not overwriting`);
+    warn(`  New version saved as ${prettyDest}.new — merge manually`);
+    fs.copyFileSync(src, dest + '.new');
+    return 'skipped';
+  }
+
+  // First install over existing file — back it up
+  fs.copyFileSync(dest, backupPath);
+  warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
+  fs.copyFileSync(src, dest);
+  log(`Updated ${prettyDest}`);
+  return 'updated';
+}
+
+function copyDir(srcDir, destDir) {
+  ensureDir(destDir);
+  if (!fs.existsSync(srcDir)) return;
+  for (const file of fs.readdirSync(srcDir)) {
+    const srcFile = path.join(srcDir, file);
+    const destFile = path.join(destDir, file);
+    if (fs.statSync(srcFile).isFile()) {
+      smartCopy(srcFile, destFile);
+    }
+  }
+}
+
+function cleanCommentKeys(obj) {
+  if (Array.isArray(obj)) return obj.map(cleanCommentKeys);
+  if (obj && typeof obj === 'object') {
+    const clean = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (k.startsWith('//')) continue;
+      clean[k] = cleanCommentKeys(v);
+    }
+    return clean;
+  }
+  return obj;
+}
+
+function writeCleanJson(src, dest) {
+  const raw = fs.readFileSync(src, 'utf-8');
+  let obj;
+  try { obj = JSON.parse(raw); } catch { fs.copyFileSync(src, dest); return; }
+  const clean = JSON.stringify(cleanCommentKeys(obj), null, 2);
+  const prettyDest = dest.replace(HOME, '~');
+  const destHash = fs.existsSync(dest)
+    ? crypto.createHash('md5').update(fs.readFileSync(dest)).digest('hex')
+    : null;
+  const newHash = crypto.createHash('md5').update(clean).digest('hex');
+
+  if (destHash === newHash) {
+    log(`${DIM}Unchanged ${prettyDest}${NC}`);
+    return;
+  }
+
+  if (destHash) {
+    const backupPath = dest + '.pre-golem';
+    if (!fs.existsSync(backupPath)) {
+      fs.copyFileSync(dest, backupPath);
+      warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
+    }
+    log(`Updated ${prettyDest}`);
+  } else {
+    log(`Installed ${prettyDest}`);
+  }
+  fs.writeFileSync(dest, clean);
+}
+
+// ============================================================================
+// Banner
+// ============================================================================
+
+console.log(`
+${BOLD}${CYAN}╔═══════════════════════════════════════════╗
+║     SUPER GOLEM v${PKG_VERSION.padEnd(25)}║
+║       "Let's build something."            ║
+╚═══════════════════════════════════════════╝${NC}
+`);
+
+// ============================================================================
+// 1. Create directory structure
+// ============================================================================
+
+heading('Creating directories...');
+
+for (const d of [
+  GOLEM_HOME,
+  path.join(GOLEM_HOME, 'bin'),
+  path.join(GOLEM_HOME, 'skills', 'frameworks'),
+  path.join(GOLEM_HOME, 'skills', 'databases'),
+  path.join(GOLEM_HOME, 'hooks'),
+  path.join(GOLEM_HOME, 'templates', 'commands'),
+  path.join(GOLEM_HOME, 'templates', 'agents'),
+  CLAUDE_HOME,
+  path.join(CLAUDE_HOME, 'agents'),
+]) {
+  ensureDir(d);
+}
+
+// ============================================================================
+// 2. Write version stamp (#10)
+// ============================================================================
+
+fs.writeFileSync(path.join(GOLEM_HOME, 'version'), PKG_VERSION);
+log(`Version: ${PKG_VERSION}`);
+
+// ============================================================================
+// 3. Install user-scope Claude Code config
+// ============================================================================
+
+heading('Installing user-scope config...');
+
+// ~/.claude/CLAUDE.md — Golem brain
+smartCopy(
+  path.join(PKG_ROOT, 'user-scope', 'claude-md.md'),
+  path.join(CLAUDE_HOME, 'CLAUDE.md')
+);
+
+// ~/.claude/settings.json — Global settings, hooks, permissions
+const settingsSrc = path.join(PKG_ROOT, 'user-scope', 'settings.json');
+if (fs.existsSync(settingsSrc)) {
+  writeCleanJson(settingsSrc, path.join(CLAUDE_HOME, 'settings.json'));
+}
+
+// ~/.claude/agents/security-scanner.md — Always-on security
+smartCopy(
+  path.join(PKG_ROOT, 'user-scope', 'agents', 'security-scanner.md'),
+  path.join(CLAUDE_HOME, 'agents', 'security-scanner.md')
+);
+
+// ~/.mcp.json — Global MCP servers
+const mcpSrc = path.join(PKG_ROOT, 'user-scope', 'mcp.json');
+if (fs.existsSync(mcpSrc)) {
+  const dest = path.join(HOME, '.mcp.json');
+  if (fs.existsSync(dest)) {
+    warn('~/.mcp.json already exists — review user-scope/mcp.json and merge manually');
+  } else {
+    writeCleanJson(mcpSrc, dest);
+  }
+}
+
+// ============================================================================
+// 4. Install skills
+// ============================================================================
+
+heading('Installing skill files...');
+
+copyDir(path.join(PKG_ROOT, 'skills', 'frameworks'), path.join(GOLEM_HOME, 'skills', 'frameworks'));
+copyDir(path.join(PKG_ROOT, 'skills', 'databases'), path.join(GOLEM_HOME, 'skills', 'databases'));
+
+// ============================================================================
+// 5. Install the golem CLI + hooks + templates
+// ============================================================================
+
+heading('Installing golem CLI...');
+
+const golemBin = path.join(PKG_ROOT, 'bin', 'golem');
+const golemDest = path.join(GOLEM_HOME, 'bin', 'golem');
+smartCopy(golemBin, golemDest);
+fs.chmodSync(golemDest, 0o755);
+
+// Hooks
+const hooksSrc = path.join(PKG_ROOT, 'hooks');
+if (fs.existsSync(hooksSrc)) {
+  copyDir(hooksSrc, path.join(GOLEM_HOME, 'hooks'));
+  for (const f of fs.readdirSync(path.join(GOLEM_HOME, 'hooks'))) {
+    fs.chmodSync(path.join(GOLEM_HOME, 'hooks', f), 0o755);
+  }
+}
+
+// Project-scope templates
+heading('Installing templates...');
+copyDir(path.join(PKG_ROOT, 'project-scope', 'commands'), path.join(GOLEM_HOME, 'templates', 'commands'));
+copyDir(path.join(PKG_ROOT, 'project-scope', 'agents'), path.join(GOLEM_HOME, 'templates', 'agents'));
+
+for (const f of ['settings.json', 'settings.local.json', 'mcp.json']) {
+  const src = path.join(PKG_ROOT, 'project-scope', f);
+  if (fs.existsSync(src)) {
+    smartCopy(src, path.join(GOLEM_HOME, 'templates', f));
+  }
+}
+
+// ============================================================================
+// 6. PATH setup
+// ============================================================================
+
+heading('Checking PATH...');
+
+const pathLine = `\n# Super Golem\nexport PATH="$HOME/.golem/bin:$PATH"\n`;
+let pathAdded = false;
+
+for (const rc of ['.zshrc', '.bashrc']) {
+  const rcPath = path.join(HOME, rc);
+  if (fs.existsSync(rcPath)) {
+    const content = fs.readFileSync(rcPath, 'utf-8');
+    if (!content.includes('.golem/bin')) {
+      fs.appendFileSync(rcPath, pathLine);
+      log(`Added ~/.golem/bin to PATH in ${rc}`);
+      pathAdded = true;
+    } else {
+      log(`PATH already configured in ${rc}`);
+    }
+  }
+}
+
+// ============================================================================
+// 7. MCP server validation (#12)
+// ============================================================================
+
+heading('Validating MCP servers...');
+
+const mcpPackages = ['@upstash/context7-mcp'];
+for (const pkg of mcpPackages) {
+  try {
+    execSync(`npm view ${pkg} version`, { stdio: 'pipe', timeout: 10000 });
+    log(`${pkg} — available on npm`);
+  } catch {
+    warn(`${pkg} — could not verify on npm (may still work)`);
+  }
+}
+
+// ============================================================================
+// Summary
+// ============================================================================
+
+console.log(`
+${BOLD}${GREEN}═══════════════════════════════════════════${NC}
+${BOLD}${GREEN}  User scope installation complete.${NC}
+${BOLD}${GREEN}  Version: ${PKG_VERSION}${NC}
+${BOLD}${GREEN}═══════════════════════════════════════════${NC}
+
+  ${BOLD}Installed:${NC}
+    ~/.claude/CLAUDE.md              ${DIM}← Golem brain${NC}
+    ~/.claude/settings.json          ${DIM}← Global hooks, permissions, env vars${NC}
+    ~/.claude/agents/security-scanner.md  ${DIM}← Always-on hull integrity${NC}
+    ~/.mcp.json                      ${DIM}← Global MCP servers${NC}
+    ~/.golem/bin/golem               ${DIM}← The CLI${NC}
+    ~/.golem/skills/                 ${DIM}← Framework & database reference${NC}
+    ~/.golem/templates/              ${DIM}← Project-scope templates${NC}
+
+  ${BOLD}Next:${NC}
+    ${CYAN}cd your-project${NC}
+    ${CYAN}golem init${NC}
+
+  ${BOLD}Diagnostics:${NC}
+    ${CYAN}golem doctor${NC}                     ${DIM}← Verify everything works${NC}
+${pathAdded ? `\n  ${YELLOW}⚠ Restart your terminal or run: source ~/.zshrc${NC}` : ''}
+`);

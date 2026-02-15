@@ -1,0 +1,26 @@
+{
+  "// SUPER GOLEM - Local Project Settings (NOT committed to git)": "",
+  "// Location: .claude/settings.local.json": "",
+  "// Put your personal overrides, API keys helper, and experimental stuff here": "",
+
+  "permissions": {
+    "allow": [
+      "Bash(docker:*)",
+      "Bash(kubectl:*)",
+      "Bash(curl:*)",
+      "Bash(ssh:*)"
+    ]
+  },
+
+  "env": {
+    "// Bump thinking tokens for complex tasks": "",
+    "MAX_THINKING_TOKENS": "32000",
+
+    "// Longer timeout for big builds": "",
+    "BASH_DEFAULT_TIMEOUT_MS": "600000",
+    "BASH_MAX_TIMEOUT_MS": "900000",
+
+    "// Bigger output for verbose test results": "",
+    "BASH_MAX_OUTPUT_LENGTH": "100000"
+  }
+}

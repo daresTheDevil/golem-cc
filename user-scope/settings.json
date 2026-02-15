@@ -1,0 +1,146 @@
+{
+  "// SUPER GOLEM - User-Level Claude Code Settings": "",
+  "// Location: ~/.claude/settings.json": "",
+
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx nuxi:*)",
+      "Bash(npx next:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(php -l:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(chmod:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(jq:*)",
+      "Bash(curl:*)",
+      "Bash(semgrep:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm install:*)",
+      "Bash(docker:*)",
+      "Bash(kubectl:*)",
+      "Read(~/.claude/CLAUDE.md)",
+      "Read(.golem/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/credentials*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)"
+    ],
+    "additionalDirectories": []
+  },
+
+  "env": {
+    "// === THINKING & OUTPUT POWER ===" : "",
+    "MAX_THINKING_TOKENS": "16000",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "16000",
+
+    "// === BASH BEHAVIOR ===" : "",
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",
+    "BASH_MAX_TIMEOUT_MS": "600000",
+    "BASH_MAX_OUTPUT_LENGTH": "50000",
+
+    "// === PERFORMANCE ===" : "",
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+    "DISABLE_COST_WARNINGS": "1",
+    "DISABLE_AUTOUPDATER": "0",
+
+    "// === GOLEM ===" : ""
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .golem/state.json ]; then echo \"[GOLEM CONTEXT] $(cat .golem/state.json)\"; fi"
+          },
+          {
+            "type": "command",
+            "command": "echo \"[GIT STATUS] $(git status --short 2>/dev/null || echo 'not a git repo')\""
+          },
+          {
+            "type": "command",
+            "command": "echo \"[BRANCH] $(git branch --show-current 2>/dev/null || echo 'unknown')\""
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'rm -rf /'*|*'rm -rf ~'*|*'drop database'*|*'drop table'*|*'truncate'*|*'> /dev/sda'*|*'mkfs'*|*'dd if'*) echo 'BLOCKED: Destructive command detected' >&2; exit 2;; *) exit 0;; esac; }"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.command // empty' | { read cmd; cmd_lower=$(echo \"$cmd\" | tr '[:upper:]' '[:lower:]'); case \"$cmd_lower\" in *'git push'*origin*main*|*'git push'*origin*master*|*'git push --force'*) echo 'BLOCKED: Direct push to main/master. Use feature branches.' >&2; exit 2;; *) exit 0;; esac; }"
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | { read f; [ -n \"$f\" ] && echo \"$(date +%H:%M:%S) WRITE: $f\" >> .golem/logs/file-changes.log 2>/dev/null; exit 0; }"
+          }
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .golem/state.json ]; then echo \"$(date +%Y-%m-%dT%H:%M:%S) Session ended\" >> .golem/logs/session.log 2>/dev/null; fi; exit 0"
+          }
+        ]
+      }
+    ]
+  },
+
+  "includeCoAuthoredBy": true
+}

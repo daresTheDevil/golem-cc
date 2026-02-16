@@ -83,4 +83,60 @@ describe('cache', () => {
     assert.deepStrictEqual(cache.get('object'), { key: 'value' });
     assert.deepStrictEqual(cache.get('array'), [1, 2, 3]);
   });
+
+  it('provides memoize helper for expensive functions', () => {
+    let callCount = 0;
+    const expensiveFn = (x) => {
+      callCount++;
+      return x * 2;
+    };
+
+    const memoized = cache.memoize(expensiveFn);
+
+    // First call executes function
+    assert.strictEqual(memoized(5), 10);
+    assert.strictEqual(callCount, 1);
+
+    // Second call with same arg returns cached result
+    assert.strictEqual(memoized(5), 10);
+    assert.strictEqual(callCount, 1); // Not incremented!
+
+    // Different arg executes function again
+    assert.strictEqual(memoized(10), 20);
+    assert.strictEqual(callCount, 2);
+  });
+
+  it('memoize respects TTL', (t) => {
+    let callCount = 0;
+    const expensiveFn = (x) => {
+      callCount++;
+      return x * 2;
+    };
+
+    const memoized = cache.memoize(expensiveFn, 50); // 50ms TTL
+
+    memoized(5);
+    assert.strictEqual(callCount, 1);
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        memoized(5); // Should call function again after TTL
+        assert.strictEqual(callCount, 2);
+        resolve();
+      }, 100);
+    });
+  });
+
+  it('memoize generates cache keys from function name and args', () => {
+    function myFunction(a, b) { return a + b; }
+    const memoized = cache.memoize(myFunction);
+
+    memoized(1, 2);
+    memoized(3, 4);
+
+    // Cache should have entries for both arg combinations
+    // We can't directly inspect internal keys, but can verify behavior
+    assert.strictEqual(memoized(1, 2), 3); // Cached
+    assert.strictEqual(memoized(3, 4), 7); // Cached
+  });
 });

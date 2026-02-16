@@ -5,3 +5,15 @@ node_modules/
 .env
 .golem/
 .claude/
+# Golem
+.claude/*
+!.claude/commands/
+!.claude/commands/**
+
+# Audit artifacts (local dev)
+AUDIT-*.md
+REMEDIATION.md
+findings.md
+
+# Local MCP config
+.mcp.json

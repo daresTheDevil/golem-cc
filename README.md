@@ -2,6 +2,23 @@
 
 AI development workflow engine for [Claude Code](https://docs.anthropic.com/claude-code). Think of it as a mission control layer: structured discovery → specification → planning → autonomous build → release, with security scanning and quality gates at every step.
 
+**v4.5.0:** Rich error context, integrity verification, repair command, JSON output modes, comprehensive documentation.
+
+
+## What's New in v4.5.0
+
+**Top 5% Engineering (Phase 1+2)**
+
+- **Rich Error Context** — Every error includes: what broke, why it matters, how to fix, diagnostics
+- **Integrity Verification** — SHA-256 checksums protect against corrupted installs
+- **Repair Command** — `golem repair` fixes broken installations automatically
+- **JSON Output Modes** — `--json` flag for CI/CD integration (status, doctor, log commands)
+- **NO_COLOR Support** — Standards-compliant color disabling for logs and accessibility
+- **Comprehensive Documentation** — Troubleshooting, environment vars, hooks, workflow examples
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+---
 
 ## Requirements
 
@@ -97,11 +114,11 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 
 | Command | Description |
 |---------|-------------|
-| `golem status` | Mission status report |
+| `golem status [--json]` | Mission status report (JSON mode for CI/CD) |
 | `golem sweep` | Proactive codebase health scan (security, quality, coverage) |
 | `golem recon` | Codebase intelligence (works before `init`) |
 | `golem diff` | Show git diff summary |
-| `golem log [N]` | Show last N build/session log entries (default: 1) |
+| `golem log [N] [--json]` | Show last N build/session log entries (JSON mode available) |
 
 ### Maintenance
 
@@ -109,7 +126,8 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 |---------|-------------|
 | `golem version` | Show installed version |
 | `golem update` | Pull latest golem-cc |
-| `golem doctor` | Comprehensive installation diagnostic |
+| `golem doctor [--json]` | Comprehensive installation diagnostic (JSON mode for CI/CD) |
+| `golem repair [--dry-run] [--force]` | Repair broken GOLEM_HOME installation |
 | `golem reset` | Clear state, keep config |
 | `golem eject` | Remove golem from project cleanly |
 | `golem uninstall` | Remove golem from this machine entirely |
@@ -178,6 +196,15 @@ golem uninstall --confirm
 ```
 
 `golem uninstall` restores any `.pre-golem` backup files, removes `~/.golem/`, cleans the PATH entry from your shell RC file, and removes golem-managed files from `~/.claude/`.
+
+## Documentation
+
+Comprehensive guides in `docs/`:
+
+- **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** — Common failures and fixes (Symptom → Diagnosis → Fix → Prevention)
+- **[ENVIRONMENT.md](docs/ENVIRONMENT.md)** — Environment variables (GOLEM_HOME, NO_COLOR, PATH, etc.)
+- **[EXAMPLES.md](docs/EXAMPLES.md)** — Complete workflow examples (interactive, headless, CI/CD)
+- **[HOOKS.md](docs/HOOKS.md)** — Git hook architecture and customization
 
 ## Roadmap
 

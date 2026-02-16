@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const { fileHash, smartCopy, copyDir, cleanCommentKeys, writeCleanJson, ensureDir } = require('../bin/golem-cc');
+const { fileHash, decideAction, smartCopy, copyDir, cleanCommentKeys, writeCleanJson, ensureDir } = require('../bin/golem-cc');
 
 // Helper: create a temp directory for each test
 function makeTmpDir() {
@@ -75,6 +75,32 @@ describe('fileHash', () => {
 
   it('returns null for nonexistent file', () => {
     assert.strictEqual(fileHash(path.join(tmp, 'nope.txt')), null);
+  });
+});
+
+// ============================================================================
+// decideAction
+// ============================================================================
+
+describe('decideAction', () => {
+  it('returns install when dest does not exist', () => {
+    assert.strictEqual(decideAction('abc', null, null), 'install');
+  });
+
+  it('returns unchanged when hashes match', () => {
+    assert.strictEqual(decideAction('abc', 'abc', null), 'unchanged');
+  });
+
+  it('returns update when dest matches backup', () => {
+    assert.strictEqual(decideAction('new', 'old', 'old'), 'update');
+  });
+
+  it('returns skip when user has modified (backup exists, differs from dest)', () => {
+    assert.strictEqual(decideAction('new', 'user-modified', 'original'), 'skip');
+  });
+
+  it('returns backup-and-update when no backup exists and files differ', () => {
+    assert.strictEqual(decideAction('new', 'existing', null), 'backup-and-update');
   });
 });
 
@@ -272,5 +298,17 @@ describe('writeCleanJson', () => {
     writeCleanJson(src, dest);
     assert.ok(fs.existsSync(dest + '.pre-golem'));
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(dest + '.pre-golem', 'utf-8')), { existing: true });
+  });
+
+  it('blocks symlink destinations', () => {
+    const src = path.join(tmp, 'src.json');
+    const target = path.join(tmp, 'target.json');
+    const link = path.join(tmp, 'link.json');
+    fs.writeFileSync(src, '{"new": true}');
+    fs.writeFileSync(target, '{"original": true}');
+    fs.symlinkSync(target, link);
+    const result = writeCleanJson(src, link);
+    assert.strictEqual(result, 'blocked');
+    assert.strictEqual(fs.readFileSync(target, 'utf-8'), '{"original": true}');
   });
 });

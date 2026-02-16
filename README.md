@@ -150,6 +150,16 @@ Auto-detected from `nuxt.config.*`, `next.config.*`, `composer.json`, `package.j
 - Security scanning agent active in every session
 - `semgrep` integration for static analysis (optional, recommended)
 
+## Production / High-Security Environments
+
+By default, MCP server versions in `~/.mcp.json` use `@^` semver ranges (e.g. `@^1.0.0`), which auto-resolve to the latest compatible version. For high-security or regulated environments, pin to exact versions:
+
+```json
+"@upstash/context7-mcp@1.2.3"
+```
+
+Run `npm view @upstash/context7-mcp version` to find the current version, then replace the `@^` range with the exact version string.
+
 ## Updating
 
 ```bash

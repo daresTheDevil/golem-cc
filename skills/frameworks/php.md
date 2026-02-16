@@ -47,7 +47,7 @@ $conn = mysqli_connect(
 $result = mysql_query("SELECT * FROM players WHERE id = " . $_GET['id']);
 
 // AFTER - Parameterized (if using mysqli)
-$stmt = $conn->prepare("SELECT * FROM players WHERE id = ?");
+$stmt = $conn->prepare("SELECT id, name, tier, last_visit FROM players WHERE id = ?");
 $stmt->bind_param("i", $_GET['id']);
 $stmt->execute();
 $result = $stmt->get_result();

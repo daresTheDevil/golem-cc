@@ -17,7 +17,10 @@ jq -r '.tool_input.command // empty' | {
     *'rm -rf ~'*|*'rm -r ~'*|\
     *'drop database'*|*'drop schema'*|*'drop table'*|\
     *'truncate '*|\
-    *'> /dev/'*|*'mkfs'*|*'dd if'*)
+    *'> /dev/'*|*'mkfs'*|*'dd if'*|\
+    *'git reset'*'--hard'*|\
+    *'git clean'*'-f'*|\
+    *'git checkout'*'-- .'*)
       echo 'BLOCKED: Destructive command detected' >&2
       exit 2
       ;;

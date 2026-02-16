@@ -60,6 +60,12 @@ const MAINTENANCE_COMMANDS = {
 // Helpers
 // ============================================================================
 
+function sanitizeArgs(str) {
+  if (!str) return '';
+  // Strip newlines, null bytes, and control characters (keep tab/space)
+  return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[\n\r]+/g, ' ').trim();
+}
+
 function hasCommand(cmd) {
   if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) return false;
   try {
@@ -92,7 +98,7 @@ function detectDatabases() {
     if (allDeps.pg || allDeps['@prisma/client'] || allDeps.knex) dbs.push('postgres');
     if (allDeps.oracledb) dbs.push('oracle');
     if (allDeps.mssql || allDeps.tedious) dbs.push('mssql');
-    if (allDeps.odbc || allDeps['idb-pconnector']) dbs.push('ibmi');
+    if (allDeps['idb-pconnector'] || allDeps['idb-connector']) dbs.push('ibmi');
   } catch {}
 
   // Check .env.example for connection strings
@@ -105,6 +111,31 @@ function detectDatabases() {
   } catch {}
 
   return [...new Set(dbs)];
+}
+
+function detectProjectType(cwd, flags) {
+  if (flags.has('nuxt')) return 'Nuxt';
+  if (flags.has('next')) return 'Next.js';
+  if (flags.has('php')) return 'PHP';
+  if (fs.existsSync(path.join(cwd, 'nuxt.config.ts')) || fs.existsSync(path.join(cwd, 'nuxt.config.js')) || fs.existsSync(path.join(cwd, 'nuxt.config.mjs'))) return 'Nuxt';
+  if (fs.existsSync(path.join(cwd, 'next.config.js')) || fs.existsSync(path.join(cwd, 'next.config.ts')) || fs.existsSync(path.join(cwd, 'next.config.mjs'))) return 'Next.js';
+  if (fs.existsSync(path.join(cwd, 'composer.json'))) return 'PHP';
+  if (fs.existsSync(path.join(cwd, 'package.json'))) return 'Node.js';
+  return 'project';
+}
+
+function updateGitignore(cwd) {
+  const gitignorePath = path.join(cwd, '.gitignore');
+  if (!fs.existsSync(gitignorePath)) return;
+  const content = fs.readFileSync(gitignorePath, 'utf-8');
+  const lines = content.split('\n').map(l => l.trim());
+  const additions = [];
+  if (!lines.includes('.env')) additions.push('.env');
+  if (!lines.includes('.golem/')) additions.push('.golem/');
+  if (additions.length > 0) {
+    fs.appendFileSync(gitignorePath, '\n' + additions.join('\n') + '\n');
+    console.log(`  ${GREEN}Updated${NC}   .gitignore (added: ${additions.join(', ')})`);
+  }
 }
 
 function printHelp() {
@@ -146,20 +177,20 @@ function cmdDoctor() {
   const major = parseInt(nodeVer.slice(1));
   checks.push({ name: 'Node.js >= 18', ok: major >= 18, detail: nodeVer });
 
-  // claude CLI
-  checks.push({ name: 'claude CLI', ok: hasCommand('claude'), detail: hasCommand('claude') ? 'found' : 'not found' });
-
-  // git
-  checks.push({ name: 'git', ok: hasCommand('git'), detail: hasCommand('git') ? 'found' : 'not found' });
-
-  // python3
-  checks.push({ name: 'python3', ok: hasCommand('python3'), detail: hasCommand('python3') ? 'found' : 'not found (optional)' });
-
-  // jq
-  checks.push({ name: 'jq', ok: hasCommand('jq'), detail: hasCommand('jq') ? 'found' : 'not found (REQUIRED for security hooks)' });
-
-  // semgrep
+  // Command checks — cache results to avoid redundant subprocess spawns
+  const hasClaude = hasCommand('claude');
+  const hasGit = hasCommand('git');
+  const hasPython3 = hasCommand('python3');
+  const hasJq = hasCommand('jq');
+  const hasPnpm = hasCommand('pnpm');
+  const hasNpx = hasCommand('npx');
   const hasSemgrep = hasCommand('semgrep');
+
+  checks.push({ name: 'claude CLI', ok: hasClaude, detail: hasClaude ? 'found' : 'not found' });
+  checks.push({ name: 'git', ok: hasGit, detail: hasGit ? 'found' : 'not found' });
+  checks.push({ name: 'python3', ok: hasPython3, detail: hasPython3 ? 'found' : 'not found (optional)', optional: true });
+  checks.push({ name: 'jq', ok: hasJq, detail: hasJq ? 'found' : 'MISSING — security hooks will block all commands' });
+  checks.push({ name: 'pnpm or npx', ok: hasPnpm || hasNpx, detail: hasPnpm ? 'pnpm found' : hasNpx ? 'npx found' : 'not found' });
   checks.push({ name: 'semgrep', ok: hasSemgrep, detail: hasSemgrep ? 'found' : 'not found (optional)', optional: true });
 
   // Golem home
@@ -170,10 +201,38 @@ function cmdDoctor() {
   const versionExists = fs.existsSync(VERSION_FILE);
   checks.push({ name: 'Version stamp', ok: versionExists, detail: versionExists ? getVersion() : 'missing' });
 
-  // Claude home
+  // Golem binary
+  const golemBin = path.join(GOLEM_HOME, 'bin', 'golem');
+  checks.push({ name: 'Golem binary', ok: fs.existsSync(golemBin), detail: fs.existsSync(golemBin) ? 'found' : 'missing' });
+
+  // PATH check
+  const pathHasGolem = (process.env.PATH || '').includes('.golem/bin');
+  checks.push({ name: 'PATH includes golem', ok: pathHasGolem, detail: pathHasGolem ? 'configured' : 'missing — restart terminal or source shell RC' });
+
+  // Claude home files
   const claudeHome = path.join(HOME, '.claude');
   const claudeMd = path.join(claudeHome, 'CLAUDE.md');
   checks.push({ name: '~/.claude/CLAUDE.md', ok: fs.existsSync(claudeMd), detail: fs.existsSync(claudeMd) ? 'found' : 'missing' });
+
+  const settingsJson = path.join(claudeHome, 'settings.json');
+  checks.push({ name: '~/.claude/settings.json', ok: fs.existsSync(settingsJson), detail: fs.existsSync(settingsJson) ? 'found' : 'missing' });
+
+  const scannerMd = path.join(claudeHome, 'agents', 'security-scanner.md');
+  checks.push({ name: 'Security scanner agent', ok: fs.existsSync(scannerMd), detail: fs.existsSync(scannerMd) ? 'found' : 'missing' });
+
+  // MCP config
+  const mcpJson = path.join(HOME, '.mcp.json');
+  checks.push({ name: '~/.mcp.json', ok: fs.existsSync(mcpJson), detail: fs.existsSync(mcpJson) ? 'found' : 'missing', optional: true });
+
+  // Hooks
+  const hooksDir = path.join(GOLEM_HOME, 'hooks');
+  const hooksExist = fs.existsSync(hooksDir) && fs.readdirSync(hooksDir).length > 0;
+  checks.push({ name: 'Hooks', ok: hooksExist, detail: hooksExist ? `${fs.readdirSync(hooksDir).length} hook(s)` : 'missing' });
+
+  // Skills
+  const skillsDir = path.join(GOLEM_HOME, 'skills');
+  const skillsExist = fs.existsSync(skillsDir);
+  checks.push({ name: 'Skills', ok: skillsExist, detail: skillsExist ? 'installed' : 'missing' });
 
   // Templates
   const templatesDir = path.join(GOLEM_HOME, 'templates');
@@ -183,7 +242,7 @@ function cmdDoctor() {
   let allOk = true;
   for (const c of checks) {
     const icon = c.ok ? `${GREEN}OK${NC}` : (c.optional ? `${YELLOW}--${NC}` : `${RED}FAIL${NC}`);
-    console.log(`  ${icon}  ${c.name.padEnd(22)} ${DIM}${c.detail}${NC}`);
+    console.log(`  ${icon}  ${c.name.padEnd(24)} ${DIM}${c.detail}${NC}`);
     if (!c.ok && !c.optional) allOk = false;
   }
 
@@ -207,13 +266,19 @@ function cmdInit(args = []) {
   }
 
   // Parse flags for explicit stack/db overrides
-  const flags = new Set(args.filter(a => a.startsWith('--')).map(a => a.slice(2).toLowerCase()));
+  const validFlags = new Set(['nuxt', 'next', 'php', 'pg', 'postgres', 'oracle', 'mssql', 'ibmi']);
+  const rawFlags = args.filter(a => a.startsWith('--')).map(a => a.slice(2).toLowerCase());
+  const unknownFlags = rawFlags.filter(f => !validFlags.has(f));
+  if (unknownFlags.length) {
+    console.log(`${YELLOW}Unknown flags ignored: ${unknownFlags.map(f => '--' + f).join(', ')}${NC}`);
+  }
+  const flags = new Set(rawFlags.filter(f => validFlags.has(f)));
 
   console.log(`\n${BOLD}${CYAN}Initializing golem in ${cwd}${NC}\n`);
 
   // Create .claude and .golem dirs
   for (const dir of ['.claude/commands', '.claude/agents', '.golem/logs', '.golem/plans']) {
-    fs.mkdirSync(path.join(process.cwd(), dir), { recursive: true });
+    fs.mkdirSync(path.join(cwd, dir), { recursive: true, mode: 0o700 });
     console.log(`  ${GREEN}Created${NC} ${dir}/`);
   }
 
@@ -224,17 +289,26 @@ function cmdInit(args = []) {
     process.exit(1);
   }
 
+  // Helper: symlink-safe copy for template files
+  function safeCopyTemplate(src, dest, label) {
+    if (fs.existsSync(dest)) {
+      if (fs.lstatSync(dest).isSymbolicLink()) {
+        console.log(`  ${YELLOW}Skipped${NC}   ${label} (symlink)`);
+        return false;
+      }
+      console.log(`  ${DIM}Exists${NC}    ${label}`);
+      return false;
+    }
+    fs.copyFileSync(src, dest);
+    console.log(`  ${GREEN}Installed${NC} ${label}`);
+    return true;
+  }
+
   // Commands
   const commandsSrc = path.join(templatesDir, 'commands');
   if (fs.existsSync(commandsSrc)) {
     for (const file of fs.readdirSync(commandsSrc)) {
-      const dest = path.join(process.cwd(), '.claude', 'commands', file);
-      if (!fs.existsSync(dest)) {
-        fs.copyFileSync(path.join(commandsSrc, file), dest);
-        console.log(`  ${GREEN}Installed${NC} .claude/commands/${file}`);
-      } else {
-        console.log(`  ${DIM}Exists${NC}    .claude/commands/${file}`);
-      }
+      safeCopyTemplate(path.join(commandsSrc, file), path.join(cwd, '.claude', 'commands', file), `.claude/commands/${file}`);
     }
   }
 
@@ -242,34 +316,24 @@ function cmdInit(args = []) {
   const agentsSrc = path.join(templatesDir, 'agents');
   if (fs.existsSync(agentsSrc)) {
     for (const file of fs.readdirSync(agentsSrc)) {
-      const dest = path.join(process.cwd(), '.claude', 'agents', file);
-      if (!fs.existsSync(dest)) {
-        fs.copyFileSync(path.join(agentsSrc, file), dest);
-        console.log(`  ${GREEN}Installed${NC} .claude/agents/${file}`);
-      } else {
-        console.log(`  ${DIM}Exists${NC}    .claude/agents/${file}`);
-      }
+      safeCopyTemplate(path.join(agentsSrc, file), path.join(cwd, '.claude', 'agents', file), `.claude/agents/${file}`);
     }
   }
 
   // settings.json
   const settingsSrc = path.join(templatesDir, 'settings.json');
-  const settingsDest = path.join(process.cwd(), '.claude', 'settings.json');
-  if (fs.existsSync(settingsSrc) && !fs.existsSync(settingsDest)) {
-    fs.copyFileSync(settingsSrc, settingsDest);
-    console.log(`  ${GREEN}Installed${NC} .claude/settings.json`);
-  }
+  safeCopyTemplate(settingsSrc, path.join(cwd, '.claude', 'settings.json'), '.claude/settings.json');
+
+  // settings.local.json
+  const settingsLocalSrc = path.join(templatesDir, 'settings.local.json');
+  safeCopyTemplate(settingsLocalSrc, path.join(cwd, '.claude', 'settings.local.json'), '.claude/settings.local.json');
 
   // mcp.json
   const mcpSrc = path.join(templatesDir, 'mcp.json');
-  const mcpDest = path.join(process.cwd(), '.mcp.json');
-  if (fs.existsSync(mcpSrc) && !fs.existsSync(mcpDest)) {
-    fs.copyFileSync(mcpSrc, mcpDest);
-    console.log(`  ${GREEN}Installed${NC} .mcp.json`);
-  }
+  safeCopyTemplate(mcpSrc, path.join(cwd, '.mcp.json'), '.mcp.json');
 
   // Initialize state
-  const stateDest = path.join(process.cwd(), '.golem', 'state.json');
+  const stateDest = path.join(cwd, '.golem', 'state.json');
   if (!fs.existsSync(stateDest)) {
     fs.writeFileSync(stateDest, JSON.stringify({
       phase: 'initialized',
@@ -281,17 +345,9 @@ function cmdInit(args = []) {
   }
 
   // CLAUDE.md
-  const claudeMdDest = path.join(process.cwd(), 'CLAUDE.md');
+  const claudeMdDest = path.join(cwd, 'CLAUDE.md');
   if (!fs.existsSync(claudeMdDest)) {
-    // Auto-detect project type (flags override auto-detection)
-    let projectType = 'project';
-    if (flags.has('nuxt')) projectType = 'Nuxt';
-    else if (flags.has('next')) projectType = 'Next.js';
-    else if (flags.has('php')) projectType = 'PHP';
-    else if (fs.existsSync(path.join(process.cwd(), 'nuxt.config.ts')) || fs.existsSync(path.join(process.cwd(), 'nuxt.config.js')) || fs.existsSync(path.join(process.cwd(), 'nuxt.config.mjs'))) projectType = 'Nuxt';
-    else if (fs.existsSync(path.join(process.cwd(), 'next.config.js')) || fs.existsSync(path.join(process.cwd(), 'next.config.ts'))) projectType = 'Next.js';
-    else if (fs.existsSync(path.join(process.cwd(), 'composer.json'))) projectType = 'PHP';
-    else if (fs.existsSync(path.join(process.cwd(), 'package.json'))) projectType = 'Node.js';
+    const projectType = detectProjectType(cwd, flags);
 
     // Detect databases (flags override/extend auto-detection)
     const detectedDBs = detectDatabases();
@@ -299,20 +355,17 @@ function cmdInit(args = []) {
     if (flags.has('oracle')) detectedDBs.push('oracle');
     if (flags.has('mssql')) detectedDBs.push('mssql');
     if (flags.has('ibmi')) detectedDBs.push('ibmi');
-    // Deduplicate after flag additions
     const uniqueDBs = [...new Set(detectedDBs)];
 
     // Build skill references
     const skillRefs = [];
-    if (projectType === 'Nuxt') skillRefs.push('~/.golem/skills/frameworks/nuxt.md');
-    if (projectType === 'Next.js') skillRefs.push('~/.golem/skills/frameworks/next.md');
-    if (projectType === 'PHP') skillRefs.push('~/.golem/skills/frameworks/php.md');
-    if (uniqueDBs.includes('postgres')) skillRefs.push('~/.golem/skills/databases/postgres.md');
-    if (uniqueDBs.includes('oracle')) skillRefs.push('~/.golem/skills/databases/oracle.md');
-    if (uniqueDBs.includes('mssql')) skillRefs.push('~/.golem/skills/databases/mssql.md');
-    if (uniqueDBs.includes('ibmi')) skillRefs.push('~/.golem/skills/databases/ibmi.md');
+    const skillMap = {
+      'Nuxt': 'frameworks/nuxt.md', 'Next.js': 'frameworks/next.md', 'PHP': 'frameworks/php.md',
+    };
+    if (skillMap[projectType]) skillRefs.push(`~/.golem/skills/${skillMap[projectType]}`);
+    for (const db of uniqueDBs) skillRefs.push(`~/.golem/skills/databases/${db}.md`);
 
-    let claudeMd = `# ${path.basename(process.cwd())}
+    let claudeMd = `# ${path.basename(cwd)}
 
 ## Project Type
 ${projectType}
@@ -349,24 +402,14 @@ Run \`golem help\` for details.
   }
 
   // .env.example
-  const envExDest = path.join(process.cwd(), '.env.example');
+  const envExDest = path.join(cwd, '.env.example');
   if (!fs.existsSync(envExDest)) {
     fs.writeFileSync(envExDest, '# Add your environment variables here\n');
     console.log(`  ${GREEN}Created${NC}   .env.example`);
   }
 
-  // Ensure .gitignore has .env
-  const gitignorePath = path.join(process.cwd(), '.gitignore');
-  if (fs.existsSync(gitignorePath)) {
-    const content = fs.readFileSync(gitignorePath, 'utf-8');
-    const additions = [];
-    if (!content.includes('.env')) additions.push('.env');
-    if (!content.includes('.golem/')) additions.push('.golem/');
-    if (additions.length > 0) {
-      fs.appendFileSync(gitignorePath, '\n' + additions.join('\n') + '\n');
-      console.log(`  ${GREEN}Updated${NC}   .gitignore (added: ${additions.join(', ')})`);
-    }
-  }
+  // Ensure .gitignore has .env and .golem/
+  updateGitignore(cwd);
 
   console.log(`\n  ${BOLD}${GREEN}Project initialized.${NC} Run ${CYAN}claude${NC} to start.\n`);
 }
@@ -445,11 +488,23 @@ function cmdEject(args = []) {
 }
 
 function cmdUpdate() {
-  console.log(`${CYAN}Updating golem...${NC}`);
-  const result = spawnSync('pnpm', ['dlx', 'golem-cc@latest'], {
+  const current = getVersion();
+  console.log(`${CYAN}Current version: ${current}${NC}`);
+  console.log(`${CYAN}Updating golem to latest...${NC}`);
+  const runner = hasCommand('pnpm') ? 'pnpm' : 'npx';
+  const dlxArgs = runner === 'pnpm' ? ['dlx', 'golem-cc@latest'] : ['-y', 'golem-cc@latest'];
+  const result = spawnSync(runner, dlxArgs, {
     stdio: 'inherit',
     cwd: HOME,
   });
+  if (result.status === 0) {
+    const updated = getVersion();
+    if (updated !== current) {
+      console.log(`${GREEN}Updated: ${current} → ${updated}${NC}`);
+    } else {
+      console.log(`${GREEN}Already on latest (${current}).${NC}`);
+    }
+  }
   process.exit(result.status ?? 1);
 }
 
@@ -500,13 +555,27 @@ function cmdUninstall(args = [], { home } = {}) {
     cleanNewFiles(CLAUDE_HOME);
   }
 
-  // 2. Remove ~/.golem/
+  // 2. Remove golem-created files that have no backup (golem was the first to install them)
+  const manifestPath = path.join(GOLEM_HOME_DIR, 'installed-files.json');
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      for (const f of manifest) {
+        if (fs.existsSync(f) && !fs.existsSync(f + '.pre-golem')) {
+          fs.unlinkSync(f);
+          console.log(`  ${GREEN}Removed${NC}   ${f.replace(_home, '~')}`);
+        }
+      }
+    } catch { /* corrupt manifest — skip cleanup */ }
+  }
+
+  // 3. Remove ~/.golem/
   if (fs.existsSync(GOLEM_HOME_DIR)) {
     fs.rmSync(GOLEM_HOME_DIR, { recursive: true });
     console.log(`  ${GREEN}Removed${NC}   ~/.golem/`);
   }
 
-  // 3. Remove PATH entry from shell RC files
+  // 4. Remove PATH entry from shell RC files
   for (const rc of ['.zshrc', '.bashrc']) {
     const rcPath = path.join(_home, rc);
     if (!fs.existsSync(rcPath)) continue;
@@ -523,7 +592,7 @@ function cmdUninstall(args = [], { home } = {}) {
   }
 
   console.log(`\n${GREEN}Golem uninstalled.${NC}`);
-  console.log(`${DIM}Your projects are untouched. Run 'golem eject' in each project to remove .golem/ dirs.${NC}`);
+  console.log(`${DIM}Your projects are untouched. To clean up, delete the .golem/ directory in each project.${NC}`);
 }
 
 function cmdLog(args = []) {
@@ -537,8 +606,8 @@ function cmdLog(args = []) {
     console.log(`${DIM}No log entries yet.${NC}`);
     return;
   }
-  // Show N most recent logs (default 1)
-  const count = Math.max(1, parseInt(args[0]) || 1);
+  // Show N most recent logs (default 1, max 100)
+  const count = Math.min(Math.max(1, parseInt(args[0]) || 1), 100);
   const toShow = files.slice(0, count);
   for (const file of toShow) {
     console.log(`${BOLD}${file}${NC}\n`);
@@ -552,6 +621,11 @@ function cmdDiff() {
     console.error(`${RED}git not found.${NC}`);
     process.exit(1);
   }
+  const check = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'pipe', cwd: process.cwd() });
+  if (check.status !== 0) {
+    console.error(`${RED}Not a git repository.${NC}`);
+    process.exit(1);
+  }
   const result = spawnSync('git', ['diff', '--stat'], { stdio: 'inherit', cwd: process.cwd() });
   process.exit(result.status ?? 1);
 }
@@ -560,7 +634,7 @@ function cmdDiff() {
 // Exports for testing — functions are available via require() without running dispatch
 // ============================================================================
 
-module.exports = { hasCommand, detectDatabases, cmdInit, cmdStatus, cmdReset, cmdEject, cmdUninstall, cmdLog };
+module.exports = { sanitizeArgs, hasCommand, detectDatabases, detectProjectType, updateGitignore, cmdInit, cmdDoctor, cmdStatus, cmdReset, cmdEject, cmdUninstall, cmdLog };
 
 // ============================================================================
 // Dispatch — only runs when executed directly
@@ -569,7 +643,7 @@ module.exports = { hasCommand, detectDatabases, cmdInit, cmdStatus, cmdReset, cm
 if (require.main === module) {
 
 const [,, command, ...args] = process.argv;
-const argsStr = args.join(' ');
+const argsStr = sanitizeArgs(args.join(' '));
 
 if (!command || command === '--help' || command === '-h') {
   printHelp();

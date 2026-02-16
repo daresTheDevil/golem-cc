@@ -15,7 +15,7 @@ const pool = new pg.Pool({
 
 // Always use parameterized queries
 const result = await pool.query(
-  'SELECT * FROM slot_transactions WHERE machine_id = $1 AND txn_date >= $2',
+  'SELECT machine_id, txn_date, amount, txn_type FROM slot_transactions WHERE machine_id = $1 AND txn_date >= $2',
   [machineId, startDate]
 )
 

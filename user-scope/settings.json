@@ -20,11 +20,12 @@
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(php -l:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(cat:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
+      "Bash(find .:*)",
+      "Bash(grep -rn:*)",
+      "Bash(grep -r:*)",
+      "Bash(cat ./:*)",
+      "Bash(head ./:*)",
+      "Bash(tail ./:*)",
       "Bash(wc:*)",
       "Bash(ls:*)",
       "Bash(mkdir:*)",
@@ -34,6 +35,7 @@
       "Bash(chmod +x:*)",
       "Bash(echo:*)",
       "Bash(printf:*)",
+      "// python3 and node are intentional — needed for dev workflow (scripts, REPL, tooling)",
       "Bash(python3:*)",
       "Bash(node:*)",
       "Bash(jq:*)",
@@ -123,7 +125,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | { read f; [ -n \"$f\" ] && echo \"$(date +%H:%M:%S) WRITE: $f\" >> .golem/logs/file-changes.log 2>/dev/null; exit 0; }"
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | tr -d '\\n\\r' | { read f; [ -n \"$f\" ] && echo \"$(date +%H:%M:%S) WRITE: $f\" >> .golem/logs/file-changes.log 2>/dev/null; exit 0; }"
           }
         ]
       }

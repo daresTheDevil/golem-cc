@@ -94,6 +94,26 @@ describe('Destructive command blocker hook', { skip: !jqAvailable() && 'jq not i
     const r = runHook(DESTRUCTIVE_HOOK, 'npm install express');
     assert.strictEqual(r.status, 0);
   });
+
+  it('blocks git reset --hard', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'git reset --hard HEAD~1');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks git clean -fdx', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'git clean -fdx');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks git checkout -- .', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'git checkout -- .');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('allows git reset --soft (not destructive)', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'git reset --soft HEAD~1');
+    assert.strictEqual(r.status, 0);
+  });
 });
 
 // ============================================================================
@@ -129,6 +149,21 @@ describe('Push blocker hook', { skip: !jqAvailable() && 'jq not installed' }, ()
 
   it('allows git push origin develop', () => {
     const r = runHook(PUSH_HOOK, 'git push origin develop');
+    assert.strictEqual(r.status, 0);
+  });
+
+  it('blocks git push upstream main (any remote)', () => {
+    const r = runHook(PUSH_HOOK, 'git push upstream main');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks git push gh master (any remote)', () => {
+    const r = runHook(PUSH_HOOK, 'git push gh master');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('allows git push origin feature-maintain (no false positive)', () => {
+    const r = runHook(PUSH_HOOK, 'git push origin feature-maintain');
     assert.strictEqual(r.status, 0);
   });
 });

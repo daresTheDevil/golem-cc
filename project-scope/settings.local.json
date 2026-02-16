@@ -4,12 +4,12 @@
   "// Put your personal overrides, API keys helper, and experimental stuff here": "",
 
   "permissions": {
-    "allow": [
-      "Bash(docker:*)",
-      "Bash(kubectl:*)",
-      "Bash(curl:*)",
-      "Bash(ssh:*)"
-    ]
+    "// Uncomment permissions you need for your workflow": "",
+    "// Bash(docker:*)   — container management (container escape risk)": "",
+    "// Bash(kubectl:*)  — kubernetes cluster access": "",
+    "// Bash(curl:*)     — HTTP requests (data exfiltration risk)": "",
+    "// Bash(ssh:*)      — remote server access": "",
+    "allow": []
   },
 
   "env": {

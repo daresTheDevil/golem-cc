@@ -10,20 +10,37 @@
       "Bash(npx eslint:*)",
       "Bash(npx tsc:*)",
       "Bash(npx nuxi:*)",
+      "Bash(npx next:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git status)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
       "Bash(php -l:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(semgrep:*)",
-      "Bash(npm audit:*)",
-      "Bash(npm install:*)",
+      "Bash(find .:*)",
+      "Bash(grep -rn:*)",
+      "Bash(grep -r:*)",
+      "Bash(cat ./:*)",
+      "Bash(head ./:*)",
+      "Bash(tail ./:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(chmod +x:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
       "Bash(python3:*)",
       "Bash(node:*)",
       "Bash(jq:*)",
+      "Bash(semgrep:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm install:*)",
       "Read(.golem/**)"
     ],
     "deny": [
@@ -85,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | { read f; if [ -n \"$f\" ]; then mkdir -p .golem/logs 2>/dev/null; echo \"$(date +%Y-%m-%dT%H:%M:%S) $f\" >> .golem/logs/file-changes.log 2>/dev/null; fi; exit 0; }"
+            "command": "command -v jq >/dev/null 2>&1 || exit 0; jq -r '.tool_input.file_path // empty' | tr -d '\\n\\r' | { read f; if [ -n \"$f\" ]; then mkdir -p .golem/logs 2>/dev/null; echo \"$(date +%Y-%m-%dT%H:%M:%S) $f\" >> .golem/logs/file-changes.log 2>/dev/null; fi; exit 0; }"
           }
         ]
       }

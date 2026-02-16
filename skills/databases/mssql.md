@@ -20,6 +20,8 @@ const config: sql.config = {
     min: 2,
     idleTimeoutMillis: 30000,
   },
+  connectionTimeout: 5000,
+  requestTimeout: 30000,
 }
 
 const pool = await sql.connect(config)
@@ -30,9 +32,9 @@ async function getTransactions(machineId: string, limit: number = 100) {
     .input('machineId', sql.VarChar(50), machineId)
     .input('limit', sql.Int, limit)
     .query(`
-      SELECT TOP (@limit) * 
-      FROM Transactions 
-      WHERE MachineId = @machineId 
+      SELECT TOP (@limit) TxnId, MachineId, TxnDate, Amount, TxnType
+      FROM Transactions
+      WHERE MachineId = @machineId
       ORDER BY TxnDate DESC
     `)
   return result.recordset
@@ -62,7 +64,7 @@ async function transferCredits(fromPlayer: string, toPlayer: string, amount: num
 ## SQL Server Specific Patterns
 ```sql
 -- Pagination
-SELECT * FROM Players
+SELECT PlayerId, Name, Tier, LastVisit FROM Players
 ORDER BY LastVisit DESC
 OFFSET 50 ROWS FETCH NEXT 50 ROWS ONLY;
 

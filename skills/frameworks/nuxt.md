@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
   const { id } = await getValidatedRouterParams(event, ParamsSchema.parse)
   
   const session = await useDatabase().query(
-    'SELECT * FROM player_sessions WHERE player_id = $1 AND active = true',
+    'SELECT id, player_id, machine_id, started_at, ended_at, total_wagered, total_won FROM player_sessions WHERE player_id = $1 AND active = true',
     [id]
   )
   
@@ -69,6 +69,7 @@ export function useDatabase(): pg.Pool {
       connectionString: config.databaseUrl,
       max: 20,
       idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
     })
   }
   return pool

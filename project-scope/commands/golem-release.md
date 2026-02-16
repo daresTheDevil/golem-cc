@@ -340,7 +340,18 @@ echo "Pushing to $REMOTE_NAME/$BRANCH..."
 git push "$REMOTE_NAME" "$BRANCH"
 
 echo "Pushing tag $TAG..."
-git push "$REMOTE_NAME" "$TAG"
+if ! git push "$REMOTE_NAME" "$TAG"; then
+  echo "❌ TAG PUSH FAILED — branch was pushed but tag was not."
+  echo ""
+  echo "Recovery: retry the tag push manually:"
+  echo "  git push $REMOTE_NAME $TAG"
+  echo ""
+  echo "If the tag is wrong, delete and re-tag:"
+  echo "  git tag -d $TAG"
+  echo "  git tag -a $TAG -m 'Release $TAG'"
+  echo "  git push $REMOTE_NAME $TAG"
+  exit 1
+fi
 ```
 
 ### 4.2 Verify Push

@@ -12,7 +12,7 @@ const { execSync } = require('child_process');
 // ============================================================================
 
 const HOME = os.homedir();
-const GOLEM_HOME = path.join(HOME, '.golem');
+const GOLEM_HOME = process.env.GOLEM_HOME || path.join(HOME, '.golem');
 const CLAUDE_HOME = path.join(HOME, '.claude');
 const PKG_ROOT = path.resolve(__dirname, '..');
 
@@ -32,12 +32,22 @@ function warn(msg) { console.log(`${YELLOW}[golem]${NC} ${msg}`); }
 function heading(msg) { console.log(`\n${BOLD}${CYAN}${msg}${NC}`); }
 
 function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
 function fileHash(filepath) {
   if (!fs.existsSync(filepath)) return null;
   return crypto.createHash('sha256').update(fs.readFileSync(filepath)).digest('hex');
+}
+
+// Decide what action to take for a file based on hash comparison
+// Returns: 'install' | 'unchanged' | 'update' | 'skip' | 'backup-and-update'
+function decideAction(newHash, destHash, backupHash) {
+  if (!destHash) return 'install';
+  if (newHash === destHash) return 'unchanged';
+  if (backupHash && backupHash === destHash) return 'update';
+  if (backupHash) return 'skip';
+  return 'backup-and-update';
 }
 
 // Idempotent copy (#11): skip if identical, backup if different, warn if user-modified
@@ -49,46 +59,35 @@ function smartCopy(src, dest, { label = '' } = {}) {
   }
   const srcHash = fileHash(src);
   const destHash = fileHash(dest);
-  const prettyDest = dest.replace(HOME, '~');
-
-  if (!destHash) {
-    // New file
-    fs.copyFileSync(src, dest);
-    log(`Installed ${prettyDest}`);
-    return 'installed';
-  }
-
-  if (srcHash === destHash) {
-    // Identical
-    log(`${DIM}Unchanged ${prettyDest}${NC}`);
-    return 'unchanged';
-  }
-
-  // File exists and differs — check if it was our previous install
   const backupPath = dest + '.pre-golem';
-  const prevHash = fileHash(backupPath);
+  const backupHash = fileHash(backupPath);
+  const prettyDest = dest.replace(HOME, '~');
+  const action = decideAction(srcHash, destHash, backupHash);
 
-  if (prevHash && prevHash === destHash) {
-    // Dest matches the pre-golem backup (user hasn't modified it since last install)
-    fs.copyFileSync(src, dest);
-    log(`Updated ${prettyDest}`);
-    return 'updated';
+  switch (action) {
+    case 'install':
+      fs.copyFileSync(src, dest);
+      log(`Installed ${prettyDest}`);
+      return 'installed';
+    case 'unchanged':
+      log(`${DIM}Unchanged ${prettyDest}${NC}`);
+      return 'unchanged';
+    case 'update':
+      fs.copyFileSync(src, dest);
+      log(`Updated ${prettyDest}`);
+      return 'updated';
+    case 'skip':
+      warn(`${prettyDest} has local modifications — not overwriting`);
+      warn(`  New version saved as ${prettyDest}.new — merge manually`);
+      fs.copyFileSync(src, dest + '.new');
+      return 'skipped';
+    case 'backup-and-update':
+      fs.copyFileSync(dest, backupPath);
+      warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
+      fs.copyFileSync(src, dest);
+      log(`Updated ${prettyDest}`);
+      return 'updated';
   }
-
-  if (prevHash) {
-    // Dest differs from both src AND backup — user has customized it
-    warn(`${prettyDest} has local modifications — not overwriting`);
-    warn(`  New version saved as ${prettyDest}.new — merge manually`);
-    fs.copyFileSync(src, dest + '.new');
-    return 'skipped';
-  }
-
-  // First install over existing file — back it up
-  fs.copyFileSync(dest, backupPath);
-  warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
-  fs.copyFileSync(src, dest);
-  log(`Updated ${prettyDest}`);
-  return 'updated';
 }
 
 function copyDir(srcDir, destDir) {
@@ -127,6 +126,11 @@ function cleanCommentKeys(obj) {
 }
 
 function writeCleanJson(src, dest) {
+  // Symlink protection — refuse to overwrite symlinks (path traversal risk)
+  if (fs.existsSync(dest) && fs.lstatSync(dest).isSymbolicLink()) {
+    warn(`Refusing to overwrite symlink: ${dest.replace(HOME, '~')}`);
+    return 'blocked';
+  }
   const raw = fs.readFileSync(src, 'utf-8');
   let obj;
   try { obj = JSON.parse(raw); } catch { fs.copyFileSync(src, dest); return; }
@@ -136,54 +140,42 @@ function writeCleanJson(src, dest) {
     .replace(/\$HOME(?![A-Za-z0-9_])/g, HOME);
   const prettyDest = dest.replace(HOME, '~');
   const newHash = crypto.createHash('sha256').update(clean).digest('hex');
-  const destHash = fs.existsSync(dest)
-    ? crypto.createHash('sha256').update(fs.readFileSync(dest)).digest('hex')
-    : null;
-
-  if (!destHash) {
-    fs.writeFileSync(dest, clean);
-    log(`Installed ${prettyDest}`);
-    return;
-  }
-
-  if (destHash === newHash) {
-    log(`${DIM}Unchanged ${prettyDest}${NC}`);
-    return;
-  }
-
-  // Check if user has customized the file since last install
+  const destHash = fileHash(dest);
   const backupPath = dest + '.pre-golem';
-  const prevHash = fs.existsSync(backupPath)
-    ? crypto.createHash('sha256').update(fs.readFileSync(backupPath)).digest('hex')
-    : null;
+  const backupHash = fileHash(backupPath);
+  const action = decideAction(newHash, destHash, backupHash);
 
-  if (prevHash && prevHash === destHash) {
-    // User hasn't modified since last install — safe to update
-    fs.writeFileSync(dest, clean);
-    log(`Updated ${prettyDest}`);
-    return;
+  switch (action) {
+    case 'install':
+      fs.writeFileSync(dest, clean);
+      log(`Installed ${prettyDest}`);
+      break;
+    case 'unchanged':
+      log(`${DIM}Unchanged ${prettyDest}${NC}`);
+      break;
+    case 'update':
+      fs.writeFileSync(dest, clean);
+      log(`Updated ${prettyDest}`);
+      break;
+    case 'skip':
+      warn(`${prettyDest} has local modifications — not overwriting`);
+      warn(`  New version saved as ${prettyDest}.new — merge manually`);
+      fs.writeFileSync(dest + '.new', clean);
+      break;
+    case 'backup-and-update':
+      fs.copyFileSync(dest, backupPath);
+      warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
+      fs.writeFileSync(dest, clean);
+      log(`Updated ${prettyDest}`);
+      break;
   }
-
-  if (prevHash) {
-    // User HAS modified — don't overwrite
-    warn(`${prettyDest} has local modifications — not overwriting`);
-    warn(`  New version saved as ${prettyDest}.new — merge manually`);
-    fs.writeFileSync(dest + '.new', clean);
-    return;
-  }
-
-  // First install over existing file — back it up
-  fs.copyFileSync(dest, backupPath);
-  warn(`Backed up existing ${path.basename(dest)} → ${path.basename(backupPath)}`);
-  fs.writeFileSync(dest, clean);
-  log(`Updated ${prettyDest}`);
 }
 
 // ============================================================================
 // Exports for testing — functions are available via require() without running install
 // ============================================================================
 
-module.exports = { fileHash, smartCopy, copyDir, cleanCommentKeys, writeCleanJson, ensureDir };
+module.exports = { fileHash, decideAction, smartCopy, copyDir, cleanCommentKeys, writeCleanJson, ensureDir };
 
 // ============================================================================
 // Banner + Main installation — only runs when executed directly
@@ -314,10 +306,12 @@ heading('Checking PATH...');
 
 const pathLine = `\n# Super Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n`;
 let pathAdded = false;
+let rcFound = false;
 
 for (const rc of ['.zshrc', '.bashrc']) {
   const rcPath = path.join(HOME, rc);
   if (fs.existsSync(rcPath)) {
+    rcFound = true;
     const content = fs.readFileSync(rcPath, 'utf-8');
     if (!content.includes('.golem/bin')) {
       fs.appendFileSync(rcPath, pathLine);
@@ -329,8 +323,29 @@ for (const rc of ['.zshrc', '.bashrc']) {
   }
 }
 
+if (!rcFound) {
+  warn(`No .zshrc or .bashrc found in ${HOME}`);
+  warn(`Add this to your shell config manually:`);
+  warn(`  export PATH="$PATH:$HOME/.golem/bin"`);
+}
+
 // ============================================================================
-// 7. MCP server validation (#12)
+// 7. Write install manifest (for clean uninstall)
+// ============================================================================
+
+const installedFiles = [
+  path.join(CLAUDE_HOME, 'CLAUDE.md'),
+  path.join(CLAUDE_HOME, 'settings.json'),
+  path.join(CLAUDE_HOME, 'agents', 'security-scanner.md'),
+  path.join(HOME, '.mcp.json'),
+].filter(f => fs.existsSync(f));
+fs.writeFileSync(
+  path.join(GOLEM_HOME, 'installed-files.json'),
+  JSON.stringify(installedFiles, null, 2)
+);
+
+// ============================================================================
+// 8. MCP server validation (#12)
 // ============================================================================
 
 heading('Validating MCP servers...');

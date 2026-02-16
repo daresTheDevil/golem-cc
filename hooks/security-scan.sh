@@ -11,12 +11,18 @@ FINDINGS=0
 
 echo "🔒 Running security scan for framework: $FRAMEWORK"
 
+# ============================================================================
 # Universal checks
+# ============================================================================
+
 echo "  Checking for hardcoded secrets..."
-SECRETS=$(grep -rn "password\s*=\s*['\"].\+['\"]" \
+SECRETS=$(grep -rni \
+  "password\s*=\s*['\"].\+['\"]\|api_key\s*=\s*['\"].\+['\"]\|apikey\s*=\s*['\"].\+['\"]\|secret\s*=\s*['\"].\+['\"]\|token\s*=\s*['\"].\+['\"]" \
   --include="*.ts" --include="*.js" --include="*.php" --include="*.env.*" \
+  --include="*.json" --include="*.yaml" --include="*.yml" \
   --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=.git \
-  --exclude="*.test.*" --exclude="*.spec.*" 2>/dev/null || true)
+  --exclude="*.test.*" --exclude="*.spec.*" --exclude="package-lock.json" \
+  2>/dev/null || true)
 
 if [[ -n "$SECRETS" ]]; then
   echo "  ⚠️  POTENTIAL HARDCODED SECRETS FOUND:"
@@ -30,7 +36,19 @@ if git ls-files --cached | grep -q "\.env$\|\.env\.local$\|\.env\.production$"; 
   FINDINGS=$((FINDINGS + 1))
 fi
 
+# Check for private keys
+KEYS=$(find . -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" 2>/dev/null | \
+  grep -v node_modules | grep -v vendor | grep -v .git || true)
+if [[ -n "$KEYS" ]]; then
+  echo "  ⚠️  Private key files found:"
+  echo "$KEYS"
+  FINDINGS=$((FINDINGS + $(echo "$KEYS" | wc -l)))
+fi
+
+# ============================================================================
 # Framework-specific checks
+# ============================================================================
+
 case "$FRAMEWORK" in
   nuxt|next)
     echo "  Running npm audit..."
@@ -46,6 +64,16 @@ case "$FRAMEWORK" in
       echo "  ⚠️  eval() usage found:"
       echo "$EVALS"
       FINDINGS=$((FINDINGS + $(echo "$EVALS" | wc -l)))
+    fi
+
+    echo "  Checking for XSS patterns..."
+    XSS_JS=$(grep -rn "v-html\|dangerouslySetInnerHTML\|innerHTML\s*=" \
+      --include="*.vue" --include="*.tsx" --include="*.jsx" --include="*.ts" --include="*.js" \
+      --exclude-dir=node_modules 2>/dev/null || true)
+    if [[ -n "$XSS_JS" ]]; then
+      echo "  ⚠️  Potential XSS (raw HTML injection):"
+      echo "$XSS_JS"
+      FINDINGS=$((FINDINGS + $(echo "$XSS_JS" | wc -l)))
     fi
 
     if command -v semgrep &>/dev/null; then
@@ -66,17 +94,21 @@ case "$FRAMEWORK" in
     fi
 
     echo "  Checking for SQL injection patterns..."
-    SQLI=$(grep -rn "mysql_query\|mysqli_query\|pg_query" --include="*.php" 2>/dev/null | \
+    SQLI=$(grep -rni "mysql_query\|mysqli_query\|pg_query\|\$wpdb.*prepare" --include="*.php" 2>/dev/null | \
       grep "\$_\(GET\|POST\|REQUEST\|COOKIE\)" || true)
-    if [[ -n "$SQLI" ]]; then
+    # Also catch string concatenation in queries
+    SQLI_CONCAT=$(grep -rni "query\s*(.*\\..*\\\$_\|execute\s*(.*\\\$_" --include="*.php" \
+      --exclude-dir=vendor 2>/dev/null || true)
+    SQLI_ALL="${SQLI}${SQLI_CONCAT}"
+    if [[ -n "$SQLI_ALL" ]]; then
       echo "  ⚠️  Potential SQL injection:"
-      echo "$SQLI"
-      FINDINGS=$((FINDINGS + $(echo "$SQLI" | wc -l)))
+      echo "$SQLI_ALL" | head -20
+      FINDINGS=$((FINDINGS + $(echo "$SQLI_ALL" | grep -c . || true)))
     fi
 
     echo "  Checking for XSS patterns..."
-    XSS=$(grep -rn "echo.*\$_\(GET\|POST\|REQUEST\)" --include="*.php" 2>/dev/null | \
-      grep -v "htmlspecialchars\|htmlentities" || true)
+    XSS=$(grep -rn "echo.*\$_\(GET\|POST\|REQUEST\)\|<?=.*\$_\(GET\|POST\|REQUEST\)" --include="*.php" 2>/dev/null | \
+      grep -v "htmlspecialchars\|htmlentities\|esc_html\|esc_attr" || true)
     if [[ -n "$XSS" ]]; then
       echo "  ⚠️  Potential XSS:"
       echo "$XSS"

@@ -12,7 +12,8 @@
     },
 
     "postgres": {
-      "// Direct read-only PostgreSQL access for analytics queries": "",
+      "// PostgreSQL access — use a READ-ONLY database user for safety": "",
+      "// See: skills/databases/postgres.md for connection setup": "",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-postgres@^0.6.2"],
       "env": {

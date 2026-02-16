@@ -13,10 +13,10 @@ jq -r '.tool_input.command // empty' | {
   cmd_lower=$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
 
   case "$cmd_lower" in
-    *'git push'*origin*main*|\
-    *'git push'*origin*master*|\
+    *'git push'*' main'*|\
+    *'git push'*' master'*|\
     *'git push'*'--force'*|\
-    *'git push'*'-f '*)
+    *'git push'*'-f'*)
       echo 'BLOCKED: Direct push to main/master or force push. Use feature branches.' >&2
       exit 2
       ;;

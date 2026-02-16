@@ -427,4 +427,177 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       assert.ok(rendered.includes('\r\n'), 'Should preserve CRLF line endings');
     });
   });
+
+  describe('releaseVersion', () => {
+    it('moves [Unreleased] to new version section', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      let updated = changelog.addEntry(ast, 'added', 'Feature A');
+      updated = changelog.addEntry(updated, 'fixed', 'Bug B');
+
+      const released = changelog.releaseVersion(updated, '1.2.3', '2026-02-16');
+
+      // [Unreleased] should be empty
+      assert.strictEqual(released.unreleased.added.length, 0, 'Unreleased added should be empty');
+      assert.strictEqual(released.unreleased.fixed.length, 0, 'Unreleased fixed should be empty');
+
+      // New release should exist
+      assert.strictEqual(released.releases.length, 1, 'Should have 1 release');
+      assert.strictEqual(released.releases[0].version, '1.2.3', 'Version should match');
+      assert.strictEqual(released.releases[0].date, '2026-02-16', 'Date should match');
+      assert.strictEqual(released.releases[0].sections.added.length, 1, 'Release should have added entry');
+      assert.strictEqual(released.releases[0].sections.fixed.length, 1, 'Release should have fixed entry');
+    });
+
+    it('creates empty [Unreleased] after move', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      const updated = changelog.addEntry(ast, 'added', 'Feature');
+      const released = changelog.releaseVersion(updated, '1.0.0', '2026-02-16');
+
+      // Should have empty unreleased
+      assert.strictEqual(released.unreleased.added.length, 0, 'Should reset unreleased');
+    });
+
+    it('fails if version already exists', () => {
+      const input = `# Changelog
+
+## [Unreleased]
+
+### Added
+- New feature
+
+## [1.0.0] - 2026-01-01
+
+### Added
+- Initial release
+`;
+      const ast = changelog.parseChangelog(input);
+
+      assert.throws(() => {
+        changelog.releaseVersion(ast, '1.0.0', '2026-02-16');
+      }, /already exists/, 'Should throw if version exists');
+    });
+
+    it('handles empty [Unreleased] (no-op)', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      const result = changelog.releaseVersion(ast, '1.0.0', '2026-02-16');
+
+      // Should return null or unchanged AST to signal nothing to release
+      assert.strictEqual(result, null, 'Should return null for empty unreleased');
+    });
+
+    it('prepends new release (newest first)', () => {
+      const input = `# Changelog
+
+## [Unreleased]
+
+### Added
+- New feature
+
+## [1.0.0] - 2026-01-01
+
+### Added
+- Initial release
+`;
+      const ast = changelog.parseChangelog(input);
+      const released = changelog.releaseVersion(ast, '1.1.0', '2026-02-16');
+
+      assert.strictEqual(released.releases.length, 2, 'Should have 2 releases');
+      assert.strictEqual(released.releases[0].version, '1.1.0', 'Newest release should be first');
+      assert.strictEqual(released.releases[1].version, '1.0.0', 'Older release should be second');
+    });
+  });
+
+  describe('getGitRemote', () => {
+    it('returns remote URL and host for GitHub', () => {
+      const remote = changelog.getGitRemote();
+
+      if (remote) {
+        assert.ok(remote.url, 'Should have URL');
+        assert.ok(remote.host, 'Should have host');
+        assert.ok(typeof remote.url === 'string', 'URL should be string');
+        assert.ok(typeof remote.host === 'string', 'Host should be string');
+      } else {
+        // If no remote, that's OK (not in a git repo or no remote configured)
+        assert.strictEqual(remote, null, 'Should return null if no remote');
+      }
+    });
+  });
+
+  describe('generateComparisonLinks', () => {
+    it('generates links for GitHub URLs', () => {
+      const ast = {
+        releases: [
+          { version: '1.1.0', date: '2026-02-16', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } },
+          { version: '1.0.0', date: '2026-01-01', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } },
+        ],
+      };
+      const remote = { url: 'https://github.com/user/repo.git', host: 'github.com' };
+      const links = changelog.generateComparisonLinks(ast, remote);
+
+      assert.ok(Array.isArray(links), 'Should return array');
+      assert.ok(links.length > 0, 'Should have links');
+      assert.ok(links[0].includes('[Unreleased]'), 'Should have Unreleased link');
+      assert.ok(links[0].includes('v1.1.0...HEAD'), 'Should compare latest to HEAD');
+    });
+
+    it('returns empty array with no remote', () => {
+      const ast = { releases: [] };
+      const links = changelog.generateComparisonLinks(ast, null);
+
+      assert.ok(Array.isArray(links), 'Should return array');
+      assert.strictEqual(links.length, 0, 'Should be empty without remote');
+    });
+
+    it('handles no previous tags (first release)', () => {
+      const ast = {
+        releases: [
+          { version: '1.0.0', date: '2026-02-16', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } },
+        ],
+      };
+      const remote = { url: 'https://github.com/user/repo.git', host: 'github.com' };
+      const links = changelog.generateComparisonLinks(ast, remote);
+
+      assert.ok(links.length > 0, 'Should have links');
+      assert.ok(links.some(l => l.includes('[1.0.0]:')), 'Should have link to first release tag');
+    });
+
+    it('converts SSH URLs to HTTPS', () => {
+      const ast = {
+        releases: [{ version: '1.0.0', date: '2026-02-16', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } }],
+      };
+      const remote = { url: 'git@github.com:user/repo.git', host: 'github.com' };
+      const links = changelog.generateComparisonLinks(ast, remote);
+
+      assert.ok(links[0].includes('https://'), 'Should convert to HTTPS');
+      assert.ok(!links[0].includes('git@'), 'Should not contain SSH format');
+    });
+  });
+
+  describe('versionExists', () => {
+    it('returns true if version exists', () => {
+      const ast = {
+        releases: [
+          { version: '1.0.0', date: '2026-01-01', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } },
+        ],
+      };
+
+      assert.strictEqual(changelog.versionExists(ast, '1.0.0'), true, 'Should find existing version');
+    });
+
+    it('returns false if version does not exist', () => {
+      const ast = {
+        releases: [
+          { version: '1.0.0', date: '2026-01-01', sections: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] } },
+        ],
+      };
+
+      assert.strictEqual(changelog.versionExists(ast, '2.0.0'), false, 'Should not find non-existent version');
+    });
+
+    it('returns false for empty releases', () => {
+      const ast = { releases: [] };
+
+      assert.strictEqual(changelog.versionExists(ast, '1.0.0'), false, 'Should return false for empty');
+    });
+  });
 });

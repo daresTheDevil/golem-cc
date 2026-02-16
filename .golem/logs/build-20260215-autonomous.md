@@ -274,3 +274,65 @@
 
 ---
 
+
+### TASK-011 through TASK-014: Comprehensive Documentation
+**Status:** ✅ COMPLETED
+**Duration:** ~60 minutes (combined)
+**Files Created:**
+- `docs/TROUBLESHOOTING.md` — Comprehensive failure mode guide (Symptom → Diagnosis → Fix → Prevention)
+- `docs/ENVIRONMENT.md` — All env vars documented (GOLEM_HOME, NO_COLOR, PATH, etc.)
+- `docs/EXAMPLES.md` — Complete workflow examples (interactive, headless, CI/CD)
+- `docs/HOOKS.md` — Hook architecture, customization, troubleshooting
+
+**Tests:** N/A (documentation)
+
+**Content:**
+- TROUBLESHOOTING: 15+ common issues with real error messages, fixes, prevention
+- ENVIRONMENT: All env vars, defaults, valid values, examples, security warnings
+- EXAMPLES: 6 complete workflows from discuss to release, JSON CI/CD integration
+- HOOKS: Hook execution model, dependencies (jq), customization, bypass procedures
+
+**Commits:**
+- 05d7494: docs: TASK-011 through TASK-014 comprehensive documentation
+
+---
+
+### TASK-015: Update README with Phase 1+2 features
+**Status:** ✅ COMPLETED
+**Duration:** ~15 minutes
+**Files Modified:**
+- `README.md` — Added What's New, updated commands table, added docs links
+
+**Changes:**
+- Added v4.5.0 highlights section
+- Updated Maintenance table with repair command
+- Added --json flags to Intelligence and Maintenance commands
+- Created Documentation section with links to all docs/
+
+**Commits:**
+- adc07aa: docs: TASK-015 update README with Phase 1+2 features
+
+---
+
+### TASK-016: Add --quiet flag support
+**Status:** ✅ COMPLETED
+**Duration:** ~20 minutes
+**Files Created:**
+- `lib/logger.js` — Quiet mode wrapper for console.log
+- `tests/logger.test.js` — 8 test cases
+
+**Tests:** 202 → 210 (+8 tests, all passing)
+
+**Implementation:**
+- QUIET env var (any value including empty string) enables quiet mode
+- log() and heading() suppressed in quiet mode
+- warn() ALWAYS outputs (errors are security-critical)
+- Tested with QUIET=1, QUIET=true, QUIET= (empty)
+
+**Note:** CLI integration (bin/golem-cc, bin/golem) deferred to TASK-017
+
+**Commits:**
+- 396084e: feat: TASK-016 add --quiet flag support
+
+---
+

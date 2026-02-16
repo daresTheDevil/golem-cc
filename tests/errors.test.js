@@ -45,4 +45,30 @@ describe('errors', () => {
     assert.ok(formatted.includes('golemHomeExists'));
     assert.ok(formatted.includes('false'));
   });
+
+  it('auto-generates suggestion from diagnostics state', () => {
+    errors = require('../lib/errors.js');
+    const formatted = errors.formatError({
+      message: 'Init failed',
+      diagnostics: {
+        golemHomeExists: false,
+      },
+    });
+
+    // Should auto-suggest based on missing GOLEM_HOME
+    assert.ok(formatted.includes('pnpm dlx golem-cc') || formatted.includes('Suggested fix'));
+  });
+
+  it('respects explicit suggestion over auto-generated', () => {
+    errors = require('../lib/errors.js');
+    const formatted = errors.formatError({
+      message: 'Custom error',
+      diagnostics: {
+        golemHomeExists: false,
+      },
+      suggestion: 'Run custom command',
+    });
+
+    assert.ok(formatted.includes('Run custom command'));
+  });
 });

@@ -219,8 +219,13 @@ function cmdVersion() {
   console.log(`golem v${getVersion()}`);
 }
 
-function cmdDoctor() {
-  console.log(`\n${BOLD}${CYAN}Golem Doctor${NC}\n`);
+function cmdDoctor(args = []) {
+  const jsonMode = args.includes('--json');
+
+  if (!jsonMode) {
+    console.log(`\n${BOLD}${CYAN}Golem Doctor${NC}\n`);
+  }
+
   const checks = [];
 
   // Node version
@@ -289,28 +294,37 @@ function cmdDoctor() {
   const templatesDir = path.join(GOLEM_HOME, 'templates');
   checks.push({ name: 'Templates', ok: fs.existsSync(templatesDir), detail: fs.existsSync(templatesDir) ? 'installed' : 'missing' });
 
-  // Print results
-  let allOk = true;
-  for (const c of checks) {
-    const icon = c.ok ? `${GREEN}OK${NC}` : (c.optional ? `${YELLOW}--${NC}` : `${RED}FAIL${NC}`);
-    console.log(`  ${icon}  ${c.name.padEnd(24)} ${DIM}${c.detail}${NC}`);
-    if (!c.ok && !c.optional) allOk = false;
-  }
-
-  console.log();
-  if (allOk) {
-    console.log(`  ${GREEN}All required checks passed.${NC}\n`);
+  // Output results
+  if (jsonMode) {
+    const allOk = checks.every(c => c.ok || c.optional);
+    console.log(JSON.stringify({
+      allPassed: allOk,
+      checks: checks,
+    }, null, 2));
+    if (!allOk) process.exit(1);
   } else {
-    const diag = diagnostics.detectState(GOLEM_HOME);
-    console.error(errors.formatError({
-      message: 'Some required checks failed',
-      context: {
-        failedChecks: checks.filter(c => !c.ok && !c.optional).map(c => c.name).join(', '),
-      },
-      diagnostics: diag,
-    }));
-    console.log(); // blank line after error
-    process.exit(1);
+    let allOk = true;
+    for (const c of checks) {
+      const icon = c.ok ? `${GREEN}OK${NC}` : (c.optional ? `${YELLOW}--${NC}` : `${RED}FAIL${NC}`);
+      console.log(`  ${icon}  ${c.name.padEnd(24)} ${DIM}${c.detail}${NC}`);
+      if (!c.ok && !c.optional) allOk = false;
+    }
+
+    console.log();
+    if (allOk) {
+      console.log(`  ${GREEN}All required checks passed.${NC}\n`);
+    } else {
+      const diag = diagnostics.detectState(GOLEM_HOME);
+      console.error(errors.formatError({
+        message: 'Some required checks failed',
+        context: {
+          failedChecks: checks.filter(c => !c.ok && !c.optional).map(c => c.name).join(', '),
+        },
+        diagnostics: diag,
+      }));
+      console.log(); // blank line after error
+      process.exit(1);
+    }
   }
 }
 
@@ -487,39 +501,73 @@ Run \`golem help\` for details.
   console.log(`\n  ${BOLD}${GREEN}Project initialized.${NC} Run ${CYAN}claude${NC} to start.\n`);
 }
 
-function cmdStatus() {
+function cmdStatus(args = []) {
+  const jsonMode = args.includes('--json');
+
   const stateFile = path.join(process.cwd(), '.golem', 'state.json');
   if (!fs.existsSync(stateFile)) {
-    console.log(`${YELLOW}No golem state found. Run 'golem init' first.${NC}`);
+    if (jsonMode) {
+      console.log(JSON.stringify({ error: 'No golem state found', suggestion: 'Run: golem init' }));
+    } else {
+      console.log(`${YELLOW}No golem state found. Run 'golem init' first.${NC}`);
+    }
     process.exit(1);
   }
+
   let state;
   try {
     state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
   } catch {
-    console.error(errors.formatError({
-      message: '.golem/state.json is corrupted',
-      context: {
-        file: stateFile,
-        reason: 'Invalid JSON syntax',
-      },
-      suggestion: 'Run: golem reset',
-    }));
+    if (jsonMode) {
+      console.log(JSON.stringify({ error: '.golem/state.json is corrupted', suggestion: 'Run: golem reset' }));
+    } else {
+      console.error(errors.formatError({
+        message: '.golem/state.json is corrupted',
+        context: {
+          file: stateFile,
+          reason: 'Invalid JSON syntax',
+        },
+        suggestion: 'Run: golem reset',
+      }));
+    }
     process.exit(1);
   }
-  console.log(`\n${BOLD}Golem Status${NC}`);
-  console.log(`  Phase:     ${state.phase || 'unknown'}`);
-  console.log(`  Tasks:     ${state.tasks_completed || 0}/${state.tasks_total || 0}`);
-  console.log(`  Created:   ${state.created || 'unknown'}`);
 
-  // Show git info
+  // Collect git info
+  let gitInfo = null;
   try {
     const branch = execSync('git branch --show-current', { stdio: 'pipe', cwd: process.cwd() }).toString().trim();
     const status = execSync('git status --short', { stdio: 'pipe', cwd: process.cwd() }).toString().trim();
-    console.log(`  Branch:    ${branch}`);
-    console.log(`  Git:       ${status ? status.split('\n').length + ' changed files' : 'clean'}`);
-  } catch { /* not a git repo */ }
-  console.log();
+    gitInfo = {
+      branch: branch || null,
+      changedFiles: status ? status.split('\n').length : 0,
+      clean: !status,
+    };
+  } catch {
+    // Not a git repo
+    gitInfo = { branch: null, changedFiles: 0, clean: null };
+  }
+
+  if (jsonMode) {
+    console.log(JSON.stringify({
+      phase: state.phase || 'unknown',
+      tasks_completed: state.tasks_completed || 0,
+      tasks_total: state.tasks_total || 0,
+      created: state.created || 'unknown',
+      git: gitInfo,
+    }, null, 2));
+  } else {
+    console.log(`\n${BOLD}Golem Status${NC}`);
+    console.log(`  Phase:     ${state.phase || 'unknown'}`);
+    console.log(`  Tasks:     ${state.tasks_completed || 0}/${state.tasks_total || 0}`);
+    console.log(`  Created:   ${state.created || 'unknown'}`);
+
+    if (gitInfo && gitInfo.branch) {
+      console.log(`  Branch:    ${gitInfo.branch}`);
+      console.log(`  Git:       ${gitInfo.clean ? 'clean' : gitInfo.changedFiles + ' changed files'}`);
+    }
+    console.log();
+  }
 }
 
 function cmdReset() {
@@ -675,25 +723,53 @@ function cmdUninstall(args = [], { home } = {}) {
 }
 
 function cmdLog(args = []) {
+  const jsonMode = args.includes('--json');
+  const numericArgs = args.filter(a => !a.startsWith('--'));
+
   const logsDir = path.join(process.cwd(), '.golem', 'logs');
   if (!fs.existsSync(logsDir)) {
-    console.log(`${YELLOW}No logs found. Run 'golem init' first.${NC}`);
+    if (jsonMode) {
+      console.log(JSON.stringify({ logs: [] }));
+    } else {
+      console.log(`${YELLOW}No logs found. Run 'golem init' first.${NC}`);
+    }
     return;
   }
+
   const files = fs.readdirSync(logsDir).sort().reverse();
   if (files.length === 0) {
-    console.log(`${DIM}No log entries yet.${NC}`);
+    if (jsonMode) {
+      console.log(JSON.stringify({ logs: [] }));
+    } else {
+      console.log(`${DIM}No log entries yet.${NC}`);
+    }
     return;
   }
+
   // Show N most recent logs (default 1, max 100)
-  const count = Math.min(Math.max(1, parseInt(args[0]) || 1), 100);
+  const count = Math.min(Math.max(1, parseInt(numericArgs[0]) || 1), 100);
   const toShow = files.slice(0, count);
-  for (const file of toShow) {
-    console.log(`${BOLD}${file}${NC}\n`);
-    try {
-      console.log(fs.readFileSync(path.join(logsDir, file), 'utf-8'));
-    } catch { console.log(`${DIM}(file removed)${NC}`); }
-    if (toShow.length > 1) console.log(`${DIM}${'─'.repeat(40)}${NC}\n`);
+
+  if (jsonMode) {
+    const logs = [];
+    for (const file of toShow) {
+      let content;
+      try {
+        content = fs.readFileSync(path.join(logsDir, file), 'utf-8');
+      } catch {
+        content = '(file removed)';
+      }
+      logs.push({ filename: file, content: content });
+    }
+    console.log(JSON.stringify({ logs: logs }, null, 2));
+  } else {
+    for (const file of toShow) {
+      console.log(`${BOLD}${file}${NC}\n`);
+      try {
+        console.log(fs.readFileSync(path.join(logsDir, file), 'utf-8'));
+      } catch { console.log(`${DIM}(file removed)${NC}`); }
+      if (toShow.length > 1) console.log(`${DIM}${'─'.repeat(40)}${NC}\n`);
+    }
   }
 }
 
@@ -727,7 +803,7 @@ function cmdDiff() {
 // Exports for testing — functions are available via require() without running dispatch
 // ============================================================================
 
-module.exports = { sanitizeArgs, hasCommand, detectDatabases, detectProjectType, updateGitignore, cmdInit, cmdDoctor, cmdStatus, cmdReset, cmdEject, cmdUninstall, cmdLog };
+module.exports = { sanitizeArgs, hasCommand, detectDatabases, detectProjectType, updateGitignore, cmdInit, cmdDoctor, cmdStatus, cmdReset, cmdEject, cmdUninstall, cmdLog, createFallbackFormatError };
 
 // ============================================================================
 // Dispatch — only runs when executed directly
@@ -787,7 +863,7 @@ if (command in WORKFLOW_COMMANDS) {
 
 // Intelligence commands
 switch (command) {
-  case 'status': cmdStatus(); break;
+  case 'status': cmdStatus(args); break;
   case 'sweep': claudeSlashCommand('sweep', argsStr); break;
   case 'recon': claudeSlashCommand('recon', argsStr); break;
   case 'diff': cmdDiff(); break;
@@ -795,7 +871,7 @@ switch (command) {
 
   // Maintenance commands
   case 'version': case '--version': case '-v': cmdVersion(); break;
-  case 'doctor': cmdDoctor(); break;
+  case 'doctor': cmdDoctor(args); break;
   case 'init': cmdInit(args); break;
   case 'reset': cmdReset(); break;
   case 'eject': cmdEject(args); break;

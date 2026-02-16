@@ -86,3 +86,52 @@
 
 ---
 
+## Pre-Flight: Mission Resumption (2026-02-15T20:30:00Z)
+
+- [x] Git working tree clean
+- [x] On branch: feature/top5-phase1-2
+- [x] Tests: 158 passing (baseline: 124)
+- [x] Foundation files exist: colors.js, cache.js, errors.js, diagnostics.js
+- [x] TASK-001, TASK-002, TASK-003 marked complete in state.json
+
+**Status:** ALL CHECKS PASS. Resuming at TASK-004.
+
+---
+
+### TASK-004: Refactor all error messages to use rich context
+**Status:** ✅ COMPLETED
+**Duration:** ~45 minutes
+**Files Modified:**
+- `bin/golem` — Refactored 9 error sites to use formatError()
+- `bin/golem-cc` — Refactored installer error handler to use formatError()
+- `tests/error-refactor.test.js` — Created 13 test cases
+
+**Tests:** 158 → 169 (+11 tests, all passing)
+
+**Changes:**
+- claudeSlashCommand: Now includes context (command, PATH) and diagnostics
+- cmdInit blocked dir: Includes context (cwd, reason) with clear suggestion
+- cmdInit templates missing: Includes GOLEM_HOME context and diagnostics
+- cmdStatus corrupted JSON: Suggests `golem reset` with file context
+- cmdDiff git missing: Includes PATH context and install link
+- cmdDiff not a repo: Suggests `git init` with cwd context
+- discuss without args: Shows usage example in suggestion
+- unknown command: Suggests `golem help`
+- cmdDoctor failures: Lists failed checks in context
+- Installer errors: Handles EACCES/ENOSPC with specific suggestions
+
+**Refactoring:**
+- Extracted createFallbackFormatError() helper to avoid duplication
+- All errors now follow consistent format: message → context → diagnostics → suggestion
+
+**Security:** All paths sanitized via sanitizePath(), no injection risks in error messages
+
+**Concerns:** None
+
+**Commits:**
+- (pending) test: TASK-004 red phase
+- (pending) feat: TASK-004 green phase
+- (pending) refactor: TASK-004 refactor phase
+
+---
+

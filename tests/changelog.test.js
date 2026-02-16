@@ -335,4 +335,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       assert.strictEqual(result, 'fixed', 'Should handle uppercase');
     });
   });
+
+  describe('addEntry', () => {
+    it('adds entry to existing category', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      const updated = changelog.addEntry(ast, 'added', 'New feature X');
+
+      assert.strictEqual(updated.unreleased.added.length, 1, 'Should have 1 entry');
+      assert.strictEqual(updated.unreleased.added[0], 'New feature X', 'Entry should match');
+    });
+
+    it('creates category if missing', () => {
+      const ast = {
+        header: '# Changelog\n',
+        unreleased: { added: [], changed: [], deprecated: [], removed: [], fixed: [], security: [] },
+        releases: [],
+        links: [],
+      };
+
+      const updated = changelog.addEntry(ast, 'security', 'Fixed XSS vulnerability');
+
+      assert.strictEqual(updated.unreleased.security.length, 1, 'Should have 1 security entry');
+      assert.strictEqual(updated.unreleased.security[0], 'Fixed XSS vulnerability', 'Entry should match');
+    });
+
+    it('deduplicates identical entries', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      let updated = changelog.addEntry(ast, 'added', 'Duplicate feature');
+      updated = changelog.addEntry(updated, 'added', 'Duplicate feature');
+
+      assert.strictEqual(updated.unreleased.added.length, 1, 'Should deduplicate');
+      assert.strictEqual(updated.unreleased.added[0], 'Duplicate feature', 'Entry should match');
+    });
+
+    it('prepends new entries (newest first)', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      let updated = changelog.addEntry(ast, 'added', 'First entry');
+      updated = changelog.addEntry(updated, 'added', 'Second entry');
+
+      assert.strictEqual(updated.unreleased.added.length, 2, 'Should have 2 entries');
+      assert.strictEqual(updated.unreleased.added[0], 'Second entry', 'Newest should be first');
+      assert.strictEqual(updated.unreleased.added[1], 'First entry', 'Oldest should be last');
+    });
+  });
+
+  describe('renderChangelog', () => {
+    it('produces valid Keep a Changelog format', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      const updated = changelog.addEntry(ast, 'added', 'Test feature');
+      const rendered = changelog.renderChangelog(updated);
+
+      assert.ok(rendered.includes('# Changelog'), 'Should have main heading');
+      assert.ok(rendered.includes('## [Unreleased]'), 'Should have unreleased section');
+      assert.ok(rendered.includes('### Added'), 'Should have Added category');
+      assert.ok(rendered.includes('- Test feature'), 'Should have entry');
+    });
+
+    it('maintains category order after additions', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      let updated = changelog.addEntry(ast, 'fixed', 'Bug fix');
+      updated = changelog.addEntry(updated, 'added', 'New feature');
+      updated = changelog.addEntry(updated, 'security', 'Security patch');
+
+      const rendered = changelog.renderChangelog(updated);
+
+      // Categories must appear in order: Added, Changed, Deprecated, Removed, Fixed, Security
+      const addedIndex = rendered.indexOf('### Added');
+      const fixedIndex = rendered.indexOf('### Fixed');
+      const securityIndex = rendered.indexOf('### Security');
+
+      assert.ok(addedIndex < fixedIndex, 'Added should come before Fixed');
+      assert.ok(fixedIndex < securityIndex, 'Fixed should come before Security');
+    });
+
+    it('omits empty categories', () => {
+      const ast = changelog.parseChangelog(changelog.getTemplate());
+      const updated = changelog.addEntry(ast, 'added', 'Only added');
+      const rendered = changelog.renderChangelog(updated);
+
+      assert.ok(rendered.includes('### Added'), 'Should include Added (has entries)');
+      assert.ok(!rendered.includes('### Changed'), 'Should omit Changed (empty)');
+      assert.ok(!rendered.includes('### Deprecated'), 'Should omit Deprecated (empty)');
+    });
+
+    it('preserves line endings from original', () => {
+      const crlfTemplate = changelog.getTemplate().replace(/\n/g, '\r\n');
+      const ast = changelog.parseChangelog(crlfTemplate);
+      const updated = changelog.addEntry(ast, 'added', 'Feature');
+      const rendered = changelog.renderChangelog(updated);
+
+      assert.ok(rendered.includes('\r\n'), 'Should preserve CRLF line endings');
+    });
+  });
 });

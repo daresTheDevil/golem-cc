@@ -129,9 +129,70 @@
 **Concerns:** None
 
 **Commits:**
-- (pending) test: TASK-004 red phase
-- (pending) feat: TASK-004 green phase
-- (pending) refactor: TASK-004 refactor phase
+- 478c66a: test: TASK-004 red phase
+- 54322c0: feat: TASK-004 green phase
+
+---
+
+### TASK-005 + TASK-006: JSON output modes for status, doctor, log
+**Status:** ✅ COMPLETED
+**Duration:** ~35 minutes (combined)
+**Files Modified:**
+- `bin/golem` — Added --json flag support to cmdStatus(), cmdDoctor(), cmdLog()
+- `tests/json-output.test.js` — Created 11 test cases
+
+**Tests:** 169 → 180 (+11 tests, all passing)
+
+**Implementation:**
+- cmdStatus --json: Outputs {phase, tasks_completed, tasks_total, created, git:{branch,changedFiles,clean}}
+- cmdDoctor --json: Outputs {allPassed, checks:[{name,ok,detail,optional?}]}
+- cmdLog --json: Outputs {logs:[{filename,content}]}
+- All commands: JSON mode suppresses human-readable formatting
+- All commands: Invalid state handled gracefully in JSON mode (error objects)
+- Git info: null values when not in git repo (doesn't omit field)
+- Numeric args work with --json (e.g., `golem log 5 --json`)
+
+**Design:**
+- No extra text before/after JSON (jq-safe)
+- Valid JSON even on error (error field + suggestion field)
+- All fields always present (use null, not omit)
+- Pretty-printed JSON (2-space indent) for human readability
+
+**Security:** No env vars, no file contents, no absolute paths in JSON output
+
+**Concerns:** None
+
+**Commits:**
+- c37524e: test: TASK-005+006 red phase
+- 7bd2262: feat: TASK-005+006 green phase
+
+---
+
+### TASK-007: Create integrity verification module
+**Status:** ✅ COMPLETED
+**Duration:** ~25 minutes
+**Files Created:**
+- `lib/integrity.js` — verifyChecksum(), generateManifest()
+- `scripts/generate-checksums.js` — Build-time script to generate checksums.json
+- `tests/integrity.test.js` — 11 test cases
+- `checksums.json` — Generated manifest (59 files)
+
+**Tests:** 180 → 191 (+11 tests, all passing)
+
+**Implementation:**
+- verifyChecksum(filepath, expectedHash): Returns boolean, uses SHA-256
+- generateManifest(dirPath): Recursive directory scan, returns {relativePath: sha256hash}
+- Ignores: node_modules, .git, .golem, .claude, dist, build
+- Handles errors gracefully (missing files, unreadable files)
+- Streaming reads (no memory bloat on large files)
+
+**Security:** SHA-256 only (no MD5), safe error handling
+
+**Concerns:** None
+
+**Commits:**
+- (pending) test: TASK-007 red phase
+- (pending) feat: TASK-007 green phase
 
 ---
 

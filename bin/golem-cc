@@ -8,6 +8,7 @@ const { execSync } = require('child_process');
 const colors = require('../lib/colors.js');
 const errors = require('../lib/errors.js');
 const diagnostics = require('../lib/diagnostics.js');
+const integrity = require('../lib/integrity.js');
 
 // ============================================================================
 // golem-cc — User Scope Installer
@@ -48,12 +49,33 @@ function decideAction(newHash, destHash, backupHash) {
 }
 
 // Idempotent copy (#11): skip if identical, backup if different, warn if user-modified
-function smartCopy(src, dest, { label = '' } = {}) {
+// verifyIntegrity: if true and checksums.json exists, verify file before copy
+function smartCopy(src, dest, { label = '', verifyIntegrity = false } = {}) {
   // Symlink protection — refuse to overwrite symlinks (path traversal risk)
   if (fs.existsSync(dest) && fs.lstatSync(dest).isSymbolicLink()) {
     warn(`Refusing to overwrite symlink: ${dest.replace(HOME, '~')}`);
     return 'blocked';
   }
+
+  // Integrity verification (if enabled and checksums available)
+  if (verifyIntegrity) {
+    const relPath = path.relative(PKG_ROOT, src);
+    const checksumsPath = path.join(PKG_ROOT, 'checksums.json');
+    if (fs.existsSync(checksumsPath)) {
+      const checksums = JSON.parse(fs.readFileSync(checksumsPath, 'utf8'));
+      const expectedHash = checksums[relPath];
+      if (expectedHash && !integrity.verifyChecksum(src, expectedHash)) {
+        const err = errors.formatError({
+          message: `Integrity check failed: ${relPath}`,
+          context: { file: src, expected: expectedHash },
+          diagnostics: { ...diagnostics.detectState(GOLEM_HOME), integrityFailure: true },
+          suggestion: 'File may be corrupted. Try reinstalling: pnpm dlx golem-cc@latest'
+        });
+        throw new Error(err);
+      }
+    }
+  }
+
   const srcHash = fileHash(src);
   const destHash = fileHash(dest);
   const backupPath = dest + '.pre-golem';
@@ -87,7 +109,7 @@ function smartCopy(src, dest, { label = '' } = {}) {
   }
 }
 
-function copyDir(srcDir, destDir) {
+function copyDir(srcDir, destDir, { verifyIntegrity = false } = {}) {
   ensureDir(destDir);
   if (!fs.existsSync(srcDir)) return;
   for (const file of fs.readdirSync(srcDir)) {
@@ -104,7 +126,7 @@ function copyDir(srcDir, destDir) {
       continue;
     }
     if (stats.isFile()) {
-      smartCopy(srcFile, destFile);
+      smartCopy(srcFile, destFile, { verifyIntegrity });
     }
   }
 }
@@ -122,12 +144,32 @@ function cleanCommentKeys(obj) {
   return obj;
 }
 
-function writeCleanJson(src, dest) {
+function writeCleanJson(src, dest, { verifyIntegrity = false } = {}) {
   // Symlink protection — refuse to overwrite symlinks (path traversal risk)
   if (fs.existsSync(dest) && fs.lstatSync(dest).isSymbolicLink()) {
     warn(`Refusing to overwrite symlink: ${dest.replace(HOME, '~')}`);
     return 'blocked';
   }
+
+  // Integrity verification (if enabled and checksums available)
+  if (verifyIntegrity) {
+    const relPath = path.relative(PKG_ROOT, src);
+    const checksumsPath = path.join(PKG_ROOT, 'checksums.json');
+    if (fs.existsSync(checksumsPath)) {
+      const checksums = JSON.parse(fs.readFileSync(checksumsPath, 'utf8'));
+      const expectedHash = checksums[relPath];
+      if (expectedHash && !integrity.verifyChecksum(src, expectedHash)) {
+        const err = errors.formatError({
+          message: `Integrity check failed: ${relPath}`,
+          context: { file: src, expected: expectedHash },
+          diagnostics: { ...diagnostics.detectState(GOLEM_HOME), integrityFailure: true },
+          suggestion: 'File may be corrupted. Try reinstalling: pnpm dlx golem-cc@latest'
+        });
+        throw new Error(err);
+      }
+    }
+  }
+
   const raw = fs.readFileSync(src, 'utf-8');
   let obj;
   try { obj = JSON.parse(raw); } catch { fs.copyFileSync(src, dest); return; }
@@ -223,24 +265,26 @@ log(`Version: ${PKG_VERSION}`);
 
 heading('Installing user-scope config...');
 
-// ~/.claude/CLAUDE.md — Golem brain
+// ~/.claude/CLAUDE.md — Golem brain (VERIFY INTEGRITY)
 smartCopy(
   path.join(PKG_ROOT, 'user-scope', 'claude-md.md'),
-  path.join(CLAUDE_HOME, 'CLAUDE.md')
+  path.join(CLAUDE_HOME, 'CLAUDE.md'),
+  { verifyIntegrity: true }
 );
 
-// ~/.claude/settings.json — Global settings, hooks, permissions
+// ~/.claude/settings.json — Global settings, hooks, permissions (VERIFY INTEGRITY)
 const settingsSrc = path.join(PKG_ROOT, 'user-scope', 'settings.json');
 const settingsDest = path.join(CLAUDE_HOME, 'settings.json');
 if (fs.existsSync(settingsSrc)) {
-  writeCleanJson(settingsSrc, settingsDest);
+  writeCleanJson(settingsSrc, settingsDest, { verifyIntegrity: true });
   if (fs.existsSync(settingsDest)) fs.chmodSync(settingsDest, 0o600);
 }
 
-// ~/.claude/agents/security-scanner.md — Always-on security
+// ~/.claude/agents/security-scanner.md — Always-on security (VERIFY INTEGRITY)
 smartCopy(
   path.join(PKG_ROOT, 'user-scope', 'agents', 'security-scanner.md'),
-  path.join(CLAUDE_HOME, 'agents', 'security-scanner.md')
+  path.join(CLAUDE_HOME, 'agents', 'security-scanner.md'),
+  { verifyIntegrity: true }
 );
 
 // ~/.mcp.json — Global MCP servers
@@ -272,19 +316,19 @@ heading('Installing golem CLI...');
 
 const golemBin = path.join(PKG_ROOT, 'bin', 'golem');
 const golemDest = path.join(GOLEM_HOME, 'bin', 'golem');
-smartCopy(golemBin, golemDest);
+smartCopy(golemBin, golemDest, { verifyIntegrity: true });
 fs.chmodSync(golemDest, 0o755);
 
-// Copy lib files (colors, cache, errors, etc.)
+// Copy lib files (colors, cache, errors, etc.) — VERIFY INTEGRITY
 const libSrc = path.join(PKG_ROOT, 'lib');
 if (fs.existsSync(libSrc)) {
-  copyDir(libSrc, path.join(GOLEM_HOME, 'lib'));
+  copyDir(libSrc, path.join(GOLEM_HOME, 'lib'), { verifyIntegrity: true });
 }
 
-// Hooks
+// Hooks — VERIFY INTEGRITY (security-critical)
 const hooksSrc = path.join(PKG_ROOT, 'hooks');
 if (fs.existsSync(hooksSrc)) {
-  copyDir(hooksSrc, path.join(GOLEM_HOME, 'hooks'));
+  copyDir(hooksSrc, path.join(GOLEM_HOME, 'hooks'), { verifyIntegrity: true });
   for (const f of fs.readdirSync(path.join(GOLEM_HOME, 'hooks'))) {
     fs.chmodSync(path.join(GOLEM_HOME, 'hooks', f), 0o755);
   }

@@ -1,13 +1,10 @@
-# Super Golem (`golem-cc`)
+# Golem (`golem-cc`)
 
 AI development workflow engine for [Claude Code](https://docs.anthropic.com/claude-code). Think of it as a mission control layer: structured discovery → specification → planning → autonomous build → release, with security scanning and quality gates at every step.
 
-**v0.1.0:** Rich error context, integrity verification, repair command, JSON output modes, comprehensive documentation.
+**Current version:** 0.1.1
 
-
-## What's New in v0.1.0
-
-**Top 5% Engineering (Phase 1+2)**
+## What's New
 
 - **Rich Error Context** — Every error includes: what broke, why it matters, how to fix, diagnostics
 - **Integrity Verification** — SHA-256 checksums protect against corrupted installs
@@ -15,8 +12,6 @@ AI development workflow engine for [Claude Code](https://docs.anthropic.com/clau
 - **JSON Output Modes** — `--json` flag for CI/CD integration (status, doctor, log commands)
 - **NO_COLOR Support** — Standards-compliant color disabling for logs and accessibility
 - **Comprehensive Documentation** — Troubleshooting, environment vars, hooks, workflow examples
-
-See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 

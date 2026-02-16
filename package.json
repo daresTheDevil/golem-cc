@@ -1,7 +1,7 @@
 {
   "name": "@daresthedevil/golem-cc",
   "version": "0.1.1",
-  "description": "Super Golem — AI development workflow engine for Claude Code. Your force multiplier.",
+  "description": "Golem — AI development workflow engine for Claude Code. Your force multiplier.",
   "type": "commonjs",
   "bin": {
     "golem-cc": "./bin/golem-cc"

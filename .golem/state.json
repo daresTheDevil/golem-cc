@@ -1,0 +1,22 @@
+{
+  "phase": "in_progress",
+  "tasks_total": 10,
+  "tasks_completed": 9,
+  "created": "2026-02-16T13:03:30Z",
+  "spec": "spec-20260216-130330-changelog.md",
+  "plan": "current.md",
+  "target_grade": "A+",
+  "estimated_hours": 8,
+  "tasks": [
+    {"id": "TASK-001", "title": "Create changelog template and core parsing infrastructure", "status": "completed", "depends_on": []},
+    {"id": "TASK-002", "title": "Implement entry validation and sanitization", "status": "completed", "depends_on": ["TASK-001"]},
+    {"id": "TASK-003", "title": "Implement addEntry() and category management", "status": "completed", "depends_on": ["TASK-002"]},
+    {"id": "TASK-004", "title": "Implement release version bumping and git link generation", "status": "completed", "depends_on": ["TASK-003"]},
+    {"id": "TASK-005", "title": "Implement CLI command interface", "status": "completed", "depends_on": ["TASK-004"]},
+    {"id": "TASK-006", "title": "Add comprehensive edge case handling", "status": "completed", "depends_on": ["TASK-005"]},
+    {"id": "TASK-007", "title": "Integrate into golem-build command", "status": "completed", "depends_on": ["TASK-006"]},
+    {"id": "TASK-008", "title": "Integrate into golem-release command", "status": "completed", "depends_on": ["TASK-007"]},
+    {"id": "TASK-009", "title": "Add dry-run mode and final CLI polish", "status": "completed", "depends_on": ["TASK-008"]},
+    {"id": "TASK-010", "title": "Documentation and examples", "status": "pending", "depends_on": ["TASK-009"]}
+  ]
+}

@@ -155,10 +155,31 @@ Both paths produce the same artifacts in `.golem/` with the same quality gates.
 | `golem update` | Pull latest golem-cc |
 | `golem doctor [--json]` | Comprehensive installation diagnostic (JSON mode for CI/CD) |
 | `golem repair [--dry-run] [--force]` | Repair broken GOLEM_HOME installation |
+| `golem changelog <cat> <msg>` | Add entry to CHANGELOG.md (Keep a Changelog format) |
 | `golem reset` | Clear state, keep config |
 | `golem eject` | Remove golem from project cleanly |
 | `golem uninstall` | Remove golem from this machine entirely |
 | `golem help <cmd>` | Detailed help for a specific command |
+
+### Changelog Management
+
+Golem automates changelog maintenance using [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format:
+
+**Manual usage:**
+```bash
+golem changelog added "New authentication system"
+golem changelog fixed "Bug in user validation"
+golem changelog security "Fixed XSS vulnerability"
+golem changelog --dry-run changed "Preview changes"
+```
+
+**Categories:** `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`
+
+**Automatic updates:**
+- **During `golem build`**: Agents add changelog entries after completing tasks
+- **During `golem release`**: Moves `[Unreleased]` to versioned section with date + git links
+
+Changelog is maintained in `CHANGELOG.md` at project root.
 
 ## Architecture
 

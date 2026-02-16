@@ -6,6 +6,8 @@ const os = require('os');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const colors = require('../lib/colors.js');
+const errors = require('../lib/errors.js');
+const diagnostics = require('../lib/diagnostics.js');
 
 // ============================================================================
 // golem-cc — User Scope Installer
@@ -391,14 +393,31 @@ ${pathAdded ? `\n  ${YELLOW}⚠ Restart your terminal or run: source ~/.zshrc${N
 `);
 
 } catch (err) {
-  console.error(`\n${RED}Installation failed:${NC} ${err.message}`);
+  const context = {
+    errorCode: err.code || 'unknown',
+    message: err.message,
+  };
+
+  let suggestion = 'Check the error details below and retry';
   if (err.code === 'EACCES') {
-    console.error(`${YELLOW}Permission denied. Check ownership of ~/.claude/ and ~/.golem/${NC}`);
+    suggestion = 'Check ownership of ~/.claude/ and ~/.golem/ (run: ls -la ~/)';
   } else if (err.code === 'ENOSPC') {
-    console.error(`${YELLOW}Disk full. Free up space and try again.${NC}`);
-  } else {
+    suggestion = 'Free up disk space and try again (run: df -h)';
+  }
+
+  const diag = diagnostics.detectState(GOLEM_HOME);
+
+  console.error('\n' + errors.formatError({
+    message: `Installation failed: ${err.message}`,
+    context: context,
+    diagnostics: diag,
+    suggestion: suggestion,
+  }));
+
+  if (!err.code || (err.code !== 'EACCES' && err.code !== 'ENOSPC')) {
     console.error(`${DIM}${err.stack}${NC}`);
   }
+
   process.exit(1);
 }
 

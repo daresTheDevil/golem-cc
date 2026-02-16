@@ -13,13 +13,27 @@ const HOME = os.homedir();
 const GOLEM_HOME = process.env.GOLEM_HOME || path.join(HOME, '.golem');
 const VERSION_FILE = path.join(GOLEM_HOME, 'version');
 
-// Load colors and cache from installed lib or fallback to inline (for development/testing)
-let colors, cache;
+// Minimal fallback implementations for dev/test when lib not installed
+function createFallbackFormatError() {
+  return ({ message, context = {}, suggestion = '' }) => {
+    let msg = `Error: ${message}`;
+    if (Object.keys(context).length > 0) {
+      msg += '\nContext:\n' + Object.entries(context).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`).join('\n');
+    }
+    if (suggestion) msg += `\nSuggested fix:\n  ${suggestion}`;
+    return msg;
+  };
+}
+
+// Load colors, cache, and errors from installed lib or fallback to inline (for development/testing)
+let colors, cache, errors, diagnostics;
 try {
   colors = require(path.join(GOLEM_HOME, 'lib', 'colors.js'));
   cache = require(path.join(GOLEM_HOME, 'lib', 'cache.js'));
+  errors = require(path.join(GOLEM_HOME, 'lib', 'errors.js'));
+  diagnostics = require(path.join(GOLEM_HOME, 'lib', 'diagnostics.js'));
 } catch {
-  // Fallback: inline color logic for dev/test when lib not installed
+  // Fallback: inline implementations for dev/test when lib not installed
   const DISABLED = process.env.NO_COLOR !== undefined;
   colors = {
     GREEN: DISABLED ? '' : '\x1b[32m',
@@ -30,13 +44,19 @@ try {
     DIM: DISABLED ? '' : '\x1b[2m',
     NC: DISABLED ? '' : '\x1b[0m',
   };
-  // Minimal cache fallback (no caching in dev/test)
   cache = {
     get: () => undefined,
     set: () => {},
     clear: () => {},
     clearAll: () => {},
     memoize: (fn) => fn, // No-op memoize
+  };
+  errors = {
+    formatError: createFallbackFormatError(),
+  };
+  diagnostics = {
+    detectState: () => ({ golemHomeExists: false }),
+    suggestFix: () => 'Run: pnpm dlx golem-cc',
   };
 }
 
@@ -98,7 +118,16 @@ const hasCommand = cache.memoize(function hasCommand(cmd) {
 
 function claudeSlashCommand(name, args) {
   if (!hasCommand('claude')) {
-    console.error(`${RED}Error: claude CLI not found. Install it first: https://docs.anthropic.com/en/docs/claude-code${NC}`);
+    const diag = diagnostics.detectState(GOLEM_HOME);
+    console.error(errors.formatError({
+      message: 'claude CLI not found',
+      context: {
+        command: name,
+        PATH: process.env.PATH ? 'configured' : 'empty',
+      },
+      diagnostics: diag,
+      suggestion: 'Install claude CLI: https://docs.anthropic.com/en/docs/claude-code',
+    }));
     process.exit(1);
   }
   const slashCmd = `/golem-${name}` + (args ? ` ${args}` : '');
@@ -272,7 +301,15 @@ function cmdDoctor() {
   if (allOk) {
     console.log(`  ${GREEN}All required checks passed.${NC}\n`);
   } else {
-    console.log(`  ${RED}Some required checks failed. Run 'pnpm dlx golem-cc' to reinstall.${NC}\n`);
+    const diag = diagnostics.detectState(GOLEM_HOME);
+    console.error(errors.formatError({
+      message: 'Some required checks failed',
+      context: {
+        failedChecks: checks.filter(c => !c.ok && !c.optional).map(c => c.name).join(', '),
+      },
+      diagnostics: diag,
+    }));
+    console.log(); // blank line after error
     process.exit(1);
   }
 }
@@ -282,8 +319,14 @@ function cmdInit(args = []) {
   const blocked = ['/', '/usr', '/bin', '/sbin', '/etc', '/var', '/opt', '/tmp',
                    '/Library', '/System', HOME];
   if (blocked.includes(cwd)) {
-    console.error(`${RED}Cannot initialize golem in ${cwd}${NC}`);
-    console.error(`${YELLOW}Navigate to a project directory first.${NC}`);
+    console.error(errors.formatError({
+      message: 'Cannot initialize golem in system directory',
+      context: {
+        cwd: cwd,
+        reason: 'Directory is blocked (system or home directory)',
+      },
+      suggestion: 'Navigate to a project directory first (cd ~/projects/my-app)',
+    }));
     process.exit(1);
   }
 
@@ -307,7 +350,15 @@ function cmdInit(args = []) {
   // Copy templates
   const templatesDir = path.join(GOLEM_HOME, 'templates');
   if (!fs.existsSync(templatesDir)) {
-    console.error(`${RED}Templates not found at ${templatesDir}. Run 'pnpm dlx golem-cc' first.${NC}`);
+    const diag = diagnostics.detectState(GOLEM_HOME);
+    console.error(errors.formatError({
+      message: 'Templates not found',
+      context: {
+        expected: templatesDir,
+        GOLEM_HOME: GOLEM_HOME,
+      },
+      diagnostics: diag,
+    }));
     process.exit(1);
   }
 
@@ -446,8 +497,14 @@ function cmdStatus() {
   try {
     state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
   } catch {
-    console.error(`${RED}Error: .golem/state.json is corrupted.${NC}`);
-    console.error(`${YELLOW}Run 'golem reset' to reinitialize state.${NC}`);
+    console.error(errors.formatError({
+      message: '.golem/state.json is corrupted',
+      context: {
+        file: stateFile,
+        reason: 'Invalid JSON syntax',
+      },
+      suggestion: 'Run: golem reset',
+    }));
     process.exit(1);
   }
   console.log(`\n${BOLD}Golem Status${NC}`);
@@ -642,12 +699,24 @@ function cmdLog(args = []) {
 
 function cmdDiff() {
   if (!hasCommand('git')) {
-    console.error(`${RED}git not found.${NC}`);
+    console.error(errors.formatError({
+      message: 'git not found',
+      context: {
+        PATH: process.env.PATH ? 'configured' : 'empty',
+      },
+      suggestion: 'Install git: https://git-scm.com/downloads',
+    }));
     process.exit(1);
   }
   const check = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { stdio: 'pipe', cwd: process.cwd() });
   if (check.status !== 0) {
-    console.error(`${RED}Not a git repository.${NC}`);
+    console.error(errors.formatError({
+      message: 'Not a git repository',
+      context: {
+        cwd: process.cwd(),
+      },
+      suggestion: 'Run: git init',
+    }));
     process.exit(1);
   }
   const result = spawnSync('git', ['diff', '--stat'], { stdio: 'inherit', cwd: process.cwd() });
@@ -704,7 +773,13 @@ if (command === 'help') {
 // Workflow commands → shell out to claude with slash command
 if (command in WORKFLOW_COMMANDS) {
   if (command === 'discuss' && !argsStr.trim()) {
-    console.error(`${RED}Usage: golem discuss "your topic here"${NC}`);
+    console.error(errors.formatError({
+      message: 'Missing required argument for discuss command',
+      context: {
+        command: 'discuss',
+      },
+      suggestion: 'Usage: golem discuss "your topic here"',
+    }));
     process.exit(1);
   }
   claudeSlashCommand(command, argsStr);
@@ -728,7 +803,14 @@ switch (command) {
   case 'update': cmdUpdate(); break;
 
   default:
-    console.error(`${RED}Unknown command: ${command}${NC}\n`);
+    console.error(errors.formatError({
+      message: `Unknown command: ${command}`,
+      context: {
+        command: command,
+      },
+      suggestion: 'Run: golem help',
+    }));
+    console.error(''); // blank line before help
     printHelp();
     process.exit(1);
 }

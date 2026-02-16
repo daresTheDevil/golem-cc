@@ -67,6 +67,38 @@ Without flags, auto-detection checks: `nuxt.config.*`, `next.config.*`, `compose
 
 This creates project-scope files: slash commands, agents, project CLAUDE.md (with linked skill references), MCP config, and `.golem/` state directory.
 
+## Customizing for Your Stack
+
+### Context7 Library Integration
+
+Golem uses [Context7 MCP](https://github.com/upstash/context7-mcp) for up-to-date library documentation. Customize `CLAUDE.md` to automatically use your stack's libraries:
+
+**Edit** `~/.claude/CLAUDE.md` (user-scope) or `.claude/CLAUDE.md` (project-scope) and add your library IDs to the Context7 section:
+
+```markdown
+## Context7 Integration
+
+**Library ID syntax** — Use `/org/project` format:
+- Your primary framework: `/vercel/next.js`, `/nuxt/nuxt`
+- Your database client: `/node/pg`, `/mongodb/docs`
+- Your auth provider: `/supabase/supabase`
+```
+
+**Common library IDs:**
+- **Next.js:** `/vercel/next.js` or `/vercel/next.js/v14` (version-specific)
+- **Nuxt:** `/nuxt/nuxt`, `/nuxt/ui`
+- **Supabase:** `/supabase/supabase`
+- **PostgreSQL:** `/node/pg`
+- **Prisma:** `/prisma/prisma`
+- **MongoDB:** `/mongodb/docs`
+
+Once configured, Claude will automatically fetch documentation without prompting. Example:
+
+```
+User: "Add Supabase authentication"
+Claude: [automatically loads /supabase/supabase docs and implements]
+```
+
 ## Workflow
 
 ### Interactive (inside Claude Code)

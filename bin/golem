@@ -13,10 +13,11 @@ const HOME = os.homedir();
 const GOLEM_HOME = process.env.GOLEM_HOME || path.join(HOME, '.golem');
 const VERSION_FILE = path.join(GOLEM_HOME, 'version');
 
-// Load colors from installed lib or fallback to inline (for development/testing)
-let colors;
+// Load colors and cache from installed lib or fallback to inline (for development/testing)
+let colors, cache;
 try {
   colors = require(path.join(GOLEM_HOME, 'lib', 'colors.js'));
+  cache = require(path.join(GOLEM_HOME, 'lib', 'cache.js'));
 } catch {
   // Fallback: inline color logic for dev/test when lib not installed
   const DISABLED = process.env.NO_COLOR !== undefined;
@@ -28,6 +29,14 @@ try {
     BOLD: DISABLED ? '' : '\x1b[1m',
     DIM: DISABLED ? '' : '\x1b[2m',
     NC: DISABLED ? '' : '\x1b[0m',
+  };
+  // Minimal cache fallback (no caching in dev/test)
+  cache = {
+    get: () => undefined,
+    set: () => {},
+    clear: () => {},
+    clearAll: () => {},
+    memoize: (fn) => fn, // No-op memoize
   };
 }
 
@@ -78,13 +87,14 @@ function sanitizeArgs(str) {
   return str.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[\n\r]+/g, ' ').trim();
 }
 
-function hasCommand(cmd) {
+// Cached version of hasCommand to avoid redundant subprocess spawns
+const hasCommand = cache.memoize(function hasCommand(cmd) {
   if (!/^[a-zA-Z0-9_-]+$/.test(cmd)) return false;
   try {
     const result = spawnSync('which', [cmd], { stdio: 'pipe' });
     return result.status === 0;
   } catch { return false; }
-}
+});
 
 function claudeSlashCommand(name, args) {
   if (!hasCommand('claude')) {

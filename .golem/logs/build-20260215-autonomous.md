@@ -66,3 +66,23 @@
 
 ---
 
+### TASK-003: Create rich error context infrastructure
+**Status:** ✅ COMPLETED
+**Duration:** ~20 minutes
+**Files Created:**
+- `lib/diagnostics.js` — System state detection (GOLEM_HOME, version, templates)
+- `tests/diagnostics.test.js` — 11 test cases
+
+**Files Modified:**
+- `lib/errors.js` — Added auto-suggestion from diagnostics, diagnostics merging
+
+**Tests:** 147 → 158 (+11 tests, all passing)
+
+**Concerns:** None. Diagnostics module can detect partial install, corrupted version, missing components.
+
+**Commits:**
+- 4e21843: test: TASK-003 red phase
+- 9d3d906: feat: TASK-003 green phase
+
+---
+

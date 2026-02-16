@@ -2,10 +2,10 @@
 
 AI development workflow engine for [Claude Code](https://docs.anthropic.com/claude-code). Think of it as a mission control layer: structured discovery → specification → planning → autonomous build → release, with security scanning and quality gates at every step.
 
-**v4.5.0:** Rich error context, integrity verification, repair command, JSON output modes, comprehensive documentation.
+**v0.1.0:** Rich error context, integrity verification, repair command, JSON output modes, comprehensive documentation.
 
 
-## What's New in v4.5.0
+## What's New in v0.1.0
 
 **Top 5% Engineering (Phase 1+2)**
 
@@ -33,7 +33,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ```bash
 # Install user scope (one time)
-pnpm dlx golem-cc
+pnpm dlx @daresTheDevil/golem-cc
 
 # Restart your terminal (or source ~/.zshrc), then:
 golem doctor    # verify everything's working

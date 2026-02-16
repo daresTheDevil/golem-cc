@@ -1,6 +1,6 @@
 {
-  "name": "golem-cc",
-  "version": "4.0.0",
+  "name": "@daresTheDevil/golem-cc",
+  "version": "0.1.0",
   "description": "Super Golem — AI development workflow engine for Claude Code. Your force multiplier.",
   "type": "commonjs",
   "bin": {
@@ -18,6 +18,10 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "keywords": [
     "claude-code",
     "claude",
@@ -48,6 +52,6 @@
     "node": ">=18"
   },
   "devDependencies": {
-    "golem-cc": "latest"
+    "@daresTheDevil/golem-cc": "latest"
   }
 }

@@ -224,8 +224,7 @@ if (require.main === module) {
 
 console.log(`
 ${BOLD}${CYAN}╔═══════════════════════════════════════════╗
-║     SUPER GOLEM v${PKG_VERSION.padEnd(25)}║
-║       "Let's build something."            ║
+║     Golem v${PKG_VERSION.padEnd(31)}║
 ╚═══════════════════════════════════════════╝${NC}
 `);
 
@@ -352,7 +351,7 @@ for (const f of ['settings.json', 'settings.local.json', 'mcp.json']) {
 
 heading('Checking PATH...');
 
-const pathLine = `\n# Super Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n`;
+const pathLine = `\n# Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n`;
 let pathAdded = false;
 let rcFound = false;
 

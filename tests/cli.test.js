@@ -373,7 +373,7 @@ describe('cmdUninstall', () => {
   it('cleans PATH from RC files', () => {
     fs.mkdirSync(path.join(tmp, '.golem'), { recursive: true });
     const zshrc = path.join(tmp, '.zshrc');
-    fs.writeFileSync(zshrc, 'export PATH="/usr/bin:$PATH"\n\n# Super Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n\nalias ll="ls -la"\n');
+    fs.writeFileSync(zshrc, 'export PATH="/usr/bin:$PATH"\n\n# Golem\nexport PATH="$PATH:$HOME/.golem/bin"\n\nalias ll="ls -la"\n');
     cmdUninstall(['--confirm'], { home: tmp });
     const content = fs.readFileSync(zshrc, 'utf-8');
     assert.ok(!content.includes('.golem/bin'), 'PATH entry should be removed');

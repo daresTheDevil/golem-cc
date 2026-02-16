@@ -193,8 +193,7 @@ function updateGitignore(cwd) {
 
 function printHelp() {
   console.log(`
-${BOLD}${CYAN}Super Golem v${getVersion()}${NC}
-${DIM}"Let's build something."${NC}
+${BOLD}${CYAN}Golem v${getVersion()}${NC}
 
 ${BOLD}Usage:${NC} golem <command> [arguments]
 
@@ -831,8 +830,8 @@ function cmdUninstall(args = [], { home } = {}) {
     const content = fs.readFileSync(rcPath, 'utf-8');
     if (content.includes('.golem/bin')) {
       const cleaned = content
-        .replace(/\n# Super Golem\nexport PATH="\$PATH:\$HOME\/\.golem\/bin"\n/g, '')
-        .replace(/\n# Super Golem\nexport PATH="\$HOME\/\.golem\/bin:\$PATH"\n/g, '');
+        .replace(/\n# (Super )?Golem\nexport PATH="\$PATH:\$HOME\/\.golem\/bin"\n/g, '')
+        .replace(/\n# (Super )?Golem\nexport PATH="\$HOME\/\.golem\/bin:\$PATH"\n/g, '');
       if (cleaned !== content) {
         fs.writeFileSync(rcPath, cleaned);
         console.log(`  ${GREEN}Cleaned${NC}   ~/${rc} (removed PATH entry)`);

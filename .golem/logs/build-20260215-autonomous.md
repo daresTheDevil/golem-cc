@@ -46,3 +46,23 @@
 
 ---
 
+### TASK-002: Implement performance caching layer
+**Status:** ✅ COMPLETED
+**Duration:** ~15 minutes
+**Files Modified:**
+- `lib/cache.js` — Added memoize() helper
+- `bin/golem` — Wrapped hasCommand() with memoization
+- `tests/cache.test.js` — Added 3 memoization tests
+
+**Tests:** 144 → 147 (+3 tests, all passing)
+
+**Performance Impact:** cmdDoctor() now spawns ~3 subprocesses instead of 7+ for command checks.
+
+**Concerns:** None.
+
+**Commits:**
+- 3e7b766: test: TASK-002 red phase
+- a604dff: feat: TASK-002 green phase
+
+---
+

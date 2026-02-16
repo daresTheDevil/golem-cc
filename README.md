@@ -33,7 +33,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ```bash
 # Install user scope (one time)
-pnpm dlx @daresTheDevil/golem-cc
+pnpm dlx @daresthedevil/golem-cc
 
 # Restart your terminal (or source ~/.zshrc), then:
 golem doctor    # verify everything's working

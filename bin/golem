@@ -91,6 +91,7 @@ const MAINTENANCE_COMMANDS = {
   version: 'Show golem version',
   update: 'Update golem to latest version',
   doctor: 'Run diagnostics',
+  repair: 'Repair broken GOLEM_HOME installation',
   init: 'Initialize golem in a project',
   reset: 'Reset golem state for this project',
   eject: 'Remove golem from this project (keeps code)',
@@ -325,6 +326,98 @@ function cmdDoctor(args = []) {
       console.log(); // blank line after error
       process.exit(1);
     }
+  }
+}
+
+function cmdRepair(args = []) {
+  const dryRun = args.includes('--dry-run');
+  const force = args.includes('--force') || args.includes('--confirm');
+
+  console.log(`\n${BOLD}${CYAN}Golem Repair${NC}\n`);
+
+  // Load repair module — try GOLEM_HOME first, then fall back to package root
+  let repair;
+  try {
+    repair = require(path.join(GOLEM_HOME, 'lib', 'repair.js'));
+  } catch {
+    // GOLEM_HOME lib missing — try package root (for when running from source/tests)
+    try {
+      const pkgRoot = path.resolve(__dirname, '..');
+      repair = require(path.join(pkgRoot, 'lib', 'repair.js'));
+    } catch (err) {
+      console.error(errors.formatError({
+        message: 'Cannot load repair module',
+        context: { golemHome: GOLEM_HOME },
+        diagnostics: diagnostics.detectState(GOLEM_HOME),
+        suggestion: 'GOLEM_HOME may be corrupted. Try reinstalling: pnpm dlx golem-cc',
+      }));
+      process.exit(1);
+    }
+  }
+
+  // Detect issues
+  const result = repair.executeRepair(GOLEM_HOME, { dryRun, force });
+
+  if (result.success && result.issues && result.issues.length > 0) {
+    console.log(`${BOLD}Detected issues:${NC}`);
+    for (const issue of result.issues) {
+      console.log(`  ${RED}✗${NC} ${issue}`);
+    }
+    console.log();
+  }
+
+  if (dryRun) {
+    console.log(result.message);
+    if (result.issues && result.issues.length > 0) {
+      console.log(`\n${BOLD}Repair strategy:${NC} ${result.strategy}`);
+    }
+    return;
+  }
+
+  if (result.needsConfirmation) {
+    console.log(`${YELLOW}${result.message}${NC}`);
+    if (result.issues) {
+      console.log(`\nIssues found:`);
+      for (const issue of result.issues) {
+        console.log(`  - ${issue}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  if (!result.success) {
+    console.error(errors.formatError({
+      message: result.message || 'Repair failed',
+      context: { issues: result.issues },
+    }));
+    process.exit(1);
+  }
+
+  // Execute repair action
+  if (result.action === 'run_installer') {
+    console.log(`${BOLD}Repair strategy:${NC} Reinstall GOLEM_HOME\n`);
+    console.log('Running installer...\n');
+
+    // Run the installer
+    try {
+      execSync('pnpm dlx golem-cc@latest', {
+        stdio: 'inherit',
+        env: { ...process.env, HOME, GOLEM_HOME }
+      });
+    } catch (err) {
+      console.error(errors.formatError({
+        message: 'Installer failed',
+        context: { exitCode: err.status },
+        suggestion: 'Check error above and try again',
+      }));
+      process.exit(1);
+    }
+
+    // Run doctor after repair to verify
+    console.log(`\n${BOLD}Verifying repair...${NC}\n`);
+    cmdDoctor([]);
+  } else {
+    console.log(`${GREEN}${result.message}${NC}`);
   }
 }
 
@@ -872,6 +965,7 @@ switch (command) {
   // Maintenance commands
   case 'version': case '--version': case '-v': cmdVersion(); break;
   case 'doctor': cmdDoctor(args); break;
+  case 'repair': cmdRepair(args); break;
   case 'init': cmdInit(args); break;
   case 'reset': cmdReset(); break;
   case 'eject': cmdEject(args); break;

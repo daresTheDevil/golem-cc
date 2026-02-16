@@ -5,3 +5,7 @@ node_modules/
 .env
 .golem/
 .claude/
+# Golem
+.claude/*
+!.claude/commands/
+!.claude/commands/**

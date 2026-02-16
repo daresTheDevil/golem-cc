@@ -202,4 +202,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       assert.strictEqual(ast.unreleased.added.length, 2, 'Should have 2 top-level entries');
     });
   });
+
+  describe('validateEntry', () => {
+    it('accepts valid entry', () => {
+      const result = changelog.validateEntry('Added new feature');
+      assert.strictEqual(result.valid, true, 'Valid entry should pass');
+      assert.strictEqual(result.error, undefined, 'Should have no error');
+    });
+
+    it('rejects empty string', () => {
+      const result = changelog.validateEntry('');
+      assert.strictEqual(result.valid, false, 'Empty string should fail');
+      assert.ok(result.error.includes('empty'), 'Error should mention empty');
+    });
+
+    it('rejects whitespace-only string', () => {
+      const result = changelog.validateEntry('   \t  \n  ');
+      assert.strictEqual(result.valid, false, 'Whitespace-only should fail');
+      assert.ok(result.error.includes('empty'), 'Error should mention empty');
+    });
+
+    it('sanitizes markdown heading conflicts', () => {
+      const result = changelog.validateEntry('Added ## new section');
+      assert.strictEqual(result.valid, true, 'Should sanitize and accept');
+      assert.ok(result.sanitized, 'Should provide sanitized version');
+      assert.ok(result.sanitized.includes('\\##'), 'Should escape ##');
+    });
+  });
+
+  describe('detectSecrets', () => {
+    it('detects api_key pattern', () => {
+      const result = changelog.detectSecrets('Added api_key: abc123def456');
+      assert.strictEqual(result, true, 'Should detect api_key');
+    });
+
+    it('detects password pattern', () => {
+      const result = changelog.detectSecrets('Fixed password: s3cr3tP@ss');
+      assert.strictEqual(result, true, 'Should detect password');
+    });
+
+    it('detects token pattern', () => {
+      const result = changelog.detectSecrets('Updated token: ghp_1234567890abcdef');
+      assert.strictEqual(result, true, 'Should detect token');
+    });
+
+    it('detects API_KEY (uppercase)', () => {
+      const result = changelog.detectSecrets('Added API_KEY=abc123def456');
+      assert.strictEqual(result, true, 'Should detect uppercase API_KEY');
+    });
+
+    it('detects apiKey (camelCase)', () => {
+      const result = changelog.detectSecrets('Set apiKey: abc123def');
+      assert.strictEqual(result, true, 'Should detect camelCase apiKey');
+    });
+
+    it('allows "password" in context', () => {
+      const result = changelog.detectSecrets('Added password field to form');
+      assert.strictEqual(result, false, 'Should allow "password" without value');
+    });
+
+    it('allows "token" in context', () => {
+      const result = changelog.detectSecrets('Fixed token validation logic');
+      assert.strictEqual(result, false, 'Should allow "token" without value');
+    });
+
+    it('detects secret pattern', () => {
+      const result = changelog.detectSecrets('Added secret: abc123xyz');
+      assert.strictEqual(result, true, 'Should detect secret');
+    });
+
+    it('detects credential pattern', () => {
+      const result = changelog.detectSecrets('Fixed credential abc123xyz');
+      assert.strictEqual(result, true, 'Should detect credential');
+    });
+  });
+
+  describe('sanitizeMarkdown', () => {
+    it('escapes heading conflicts', () => {
+      const result = changelog.sanitizeMarkdown('Added ## heading');
+      assert.strictEqual(result, 'Added \\## heading', 'Should escape ##');
+    });
+
+    it('leaves single # alone (not a heading at line start)', () => {
+      const result = changelog.sanitizeMarkdown('Added #hashtag support');
+      assert.strictEqual(result, 'Added #hashtag support', 'Should leave # alone in middle of text');
+    });
+
+    it('escapes multiple ### patterns', () => {
+      const result = changelog.sanitizeMarkdown('## heading ## another ##');
+      assert.ok(result.includes('\\##'), 'Should escape all ##');
+    });
+
+    it('preserves normal markdown', () => {
+      const result = changelog.sanitizeMarkdown('Added **bold** and *italic* text');
+      assert.strictEqual(result, 'Added **bold** and *italic* text', 'Should preserve normal markdown');
+    });
+  });
+
+  describe('suggestCategory', () => {
+    it('suggests "fixed" for "fixes"', () => {
+      const result = changelog.suggestCategory('fixes');
+      assert.strictEqual(result, 'fixed', 'Should suggest fixed');
+    });
+
+    it('suggests "added" for "adds"', () => {
+      const result = changelog.suggestCategory('adds');
+      assert.strictEqual(result, 'added', 'Should suggest added');
+    });
+
+    it('suggests "added" for "add"', () => {
+      const result = changelog.suggestCategory('add');
+      assert.strictEqual(result, 'added', 'Should suggest added');
+    });
+
+    it('suggests "changed" for "change"', () => {
+      const result = changelog.suggestCategory('change');
+      assert.strictEqual(result, 'changed', 'Should suggest changed');
+    });
+
+    it('suggests "removed" for "remove"', () => {
+      const result = changelog.suggestCategory('remove');
+      assert.strictEqual(result, 'removed', 'Should suggest removed');
+    });
+
+    it('returns null for invalid category', () => {
+      const result = changelog.suggestCategory('invalid123');
+      assert.strictEqual(result, null, 'Should return null for invalid');
+    });
+
+    it('is case-insensitive', () => {
+      const result = changelog.suggestCategory('FIXES');
+      assert.strictEqual(result, 'fixed', 'Should handle uppercase');
+    });
+  });
 });

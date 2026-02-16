@@ -114,6 +114,36 @@ describe('Destructive command blocker hook', { skip: !jqAvailable() && 'jq not i
     const r = runHook(DESTRUCTIVE_HOOK, 'git reset --soft HEAD~1');
     assert.strictEqual(r.status, 0);
   });
+
+  it('blocks find -delete', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'find . -name "*.js" -delete');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks find -exec rm', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'find . -name "*.log" -exec rm {} +');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks cp /dev/null (file truncation)', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'cp /dev/null important.js');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('blocks rm -rf $HOME', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'rm -rf $HOME');
+    assert.strictEqual(r.status, 2);
+  });
+
+  it('allows safe find (no -delete)', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'find . -name "*.js" -type f');
+    assert.strictEqual(r.status, 0);
+  });
+
+  it('allows safe cp', () => {
+    const r = runHook(DESTRUCTIVE_HOOK, 'cp file1.js file2.js');
+    assert.strictEqual(r.status, 0);
+  });
 });
 
 // ============================================================================
@@ -165,6 +195,16 @@ describe('Push blocker hook', { skip: !jqAvailable() && 'jq not installed' }, ()
   it('allows git push origin feature-maintain (no false positive)', () => {
     const r = runHook(PUSH_HOOK, 'git push origin feature-maintain');
     assert.strictEqual(r.status, 0);
+  });
+
+  it('allows git push --force-with-lease (safe force push)', () => {
+    const r = runHook(PUSH_HOOK, 'git push --force-with-lease origin feature-branch');
+    assert.strictEqual(r.status, 0);
+  });
+
+  it('blocks git push --force-with-lease to main (main still protected)', () => {
+    const r = runHook(PUSH_HOOK, 'git push --force-with-lease origin main');
+    assert.strictEqual(r.status, 2);
   });
 });
 

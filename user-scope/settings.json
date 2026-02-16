@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f .golem/state.json ]; then echo \"[GOLEM CONTEXT] $(cat .golem/state.json)\"; fi"
+            "command": "if [ -f .golem/state.json ] && command -v jq >/dev/null 2>&1; then echo \"[GOLEM] Phase: $(jq -r '.phase // \"unknown\"' .golem/state.json) | Tasks: $(jq -r '\"\\(.tasks_completed // 0)/\\(.tasks_total // 0)\"' .golem/state.json)\"; fi"
           },
           {
             "type": "command",

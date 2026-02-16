@@ -109,5 +109,5 @@
     ]
   },
 
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": false
 }

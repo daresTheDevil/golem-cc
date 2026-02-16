@@ -611,7 +611,9 @@ function cmdLog(args = []) {
   const toShow = files.slice(0, count);
   for (const file of toShow) {
     console.log(`${BOLD}${file}${NC}\n`);
-    console.log(fs.readFileSync(path.join(logsDir, file), 'utf-8'));
+    try {
+      console.log(fs.readFileSync(path.join(logsDir, file), 'utf-8'));
+    } catch { console.log(`${DIM}(file removed)${NC}`); }
     if (toShow.length > 1) console.log(`${DIM}${'─'.repeat(40)}${NC}\n`);
   }
 }

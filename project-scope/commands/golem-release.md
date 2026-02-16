@@ -257,7 +257,7 @@ fi
 
 # composer.json
 if [ -f "composer.json" ] && grep -q '"version"' composer.json; then
-  sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" composer.json
+  sed -i '' "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" composer.json
   echo "✅ Updated composer.json → $NEW_VERSION"
 fi
 
@@ -275,25 +275,26 @@ done
 Build a changelog entry from conventional commits:
 
 ```bash
-echo "## v$NEW_VERSION ($(date +%Y-%m-%d))" > /tmp/changelog-entry.md
-echo "" >> /tmp/changelog-entry.md
+CHANGELOG_TMP=$(mktemp /tmp/changelog-entry.XXXXXX.md)
+echo "## v$NEW_VERSION ($(date +%Y-%m-%d))" > "$CHANGELOG_TMP"
+echo "" >> "$CHANGELOG_TMP"
 
 # Group by type
 for TYPE in feat fix perf refactor docs chore; do
   COMMITS=$(git log "$LAST_TAG"..HEAD --oneline --no-merges --grep="^$TYPE" 2>/dev/null)
   if [ -n "$COMMITS" ]; then
     case "$TYPE" in
-      feat) echo "### Features" >> /tmp/changelog-entry.md ;;
-      fix) echo "### Bug Fixes" >> /tmp/changelog-entry.md ;;
-      perf) echo "### Performance" >> /tmp/changelog-entry.md ;;
-      refactor) echo "### Refactoring" >> /tmp/changelog-entry.md ;;
-      docs) echo "### Documentation" >> /tmp/changelog-entry.md ;;
-      chore) echo "### Maintenance" >> /tmp/changelog-entry.md ;;
+      feat) echo "### Features" >> $CHANGELOG_TMP ;;
+      fix) echo "### Bug Fixes" >> $CHANGELOG_TMP ;;
+      perf) echo "### Performance" >> $CHANGELOG_TMP ;;
+      refactor) echo "### Refactoring" >> $CHANGELOG_TMP ;;
+      docs) echo "### Documentation" >> $CHANGELOG_TMP ;;
+      chore) echo "### Maintenance" >> $CHANGELOG_TMP ;;
     esac
     echo "$COMMITS" | while read -r line; do
-      echo "- $line" >> /tmp/changelog-entry.md
+      echo "- $line" >> $CHANGELOG_TMP
     done
-    echo "" >> /tmp/changelog-entry.md
+    echo "" >> $CHANGELOG_TMP
   fi
 done
 ```
@@ -307,7 +308,7 @@ Show the changelog entry to the operator before committing.
 git add package.json CHANGELOG.md $([ -f composer.json ] && echo composer.json) $([ -f VERSION ] && echo VERSION) $([ -f version.txt ] && echo version.txt)
 git commit -m "chore(release): v$NEW_VERSION
 
-$(cat /tmp/changelog-entry.md)"
+$(cat $CHANGELOG_TMP)"
 ```
 
 ## PHASE 3: TAG
@@ -318,7 +319,7 @@ TAG="v$NEW_VERSION"
 # Annotated tag with release notes
 git tag -a "$TAG" -m "Release $TAG
 
-$(cat /tmp/changelog-entry.md)"
+$(cat $CHANGELOG_TMP)"
 
 echo "✅ Created tag: $TAG"
 ```
@@ -408,7 +409,7 @@ if [ "$REMOTE_TYPE" = "github" ]; then
   # GitHub Release via gh CLI
   if command -v gh &>/dev/null; then
     echo "Creating GitHub Release..."
-    gh release create "$TAG" --title "$TAG" --notes-file /tmp/changelog-entry.md
+    gh release create "$TAG" --title "$TAG" --notes-file $CHANGELOG_TMP
     echo "✅ GitHub Release created"
   else
     echo "ℹ️  gh CLI not installed — create release manually at:"
@@ -429,7 +430,7 @@ if [ "$REMOTE_TYPE" = "gitea" ]; then
   GITEA_TOKEN="${GITEA_TOKEN:-}"
   if [ -n "$GITEA_TOKEN" ]; then
     echo "Creating Gitea Release..."
-    CHANGELOG_JSON=$(node -e "console.log(JSON.stringify(require('fs').readFileSync('/tmp/changelog-entry.md','utf-8')))")
+    CHANGELOG_JSON=$(node -e "console.log(JSON.stringify(require('fs').readFileSync('$CHANGELOG_TMP','utf-8')))")
     curl -s -X POST "https://$GITEA_HOST/api/v1/repos/$GITEA_REPO/releases" \
       -H "Authorization: token $GITEA_TOKEN" \
       -H "Content-Type: application/json" \
@@ -506,7 +507,7 @@ cat > ".golem/logs/release-$(date +%Y%m%d-%H%M%S).md" << EOF
 - **Commits**: $(git log "$LAST_TAG"..HEAD~1 --oneline --no-merges | wc -l)
 
 ## Changelog
-$(cat /tmp/changelog-entry.md)
+$(cat $CHANGELOG_TMP)
 EOF
 ```
 

@@ -15,6 +15,9 @@ jq -r '.tool_input.command // empty' | {
   case "$cmd_lower" in
     *'rm -rf'*'/'*|*'rm -r '*'/'*|*'rm --recursive'*'/'*|\
     *'rm -rf ~'*|*'rm -r ~'*|\
+    *'rm -rf $home'*|*'rm -r $home'*|\
+    *'find '*'-delete'*|*'find '*'-exec'*'rm '*|\
+    *'cp /dev/null '*|\
     *'drop database'*|*'drop schema'*|*'drop table'*|\
     *'truncate '*|\
     *'> /dev/'*|*'mkfs'*|*'dd if'*|\

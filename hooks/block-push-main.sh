@@ -14,10 +14,16 @@ jq -r '.tool_input.command // empty' | {
 
   case "$cmd_lower" in
     *'git push'*' main'*|\
-    *'git push'*' master'*|\
+    *'git push'*' master'*)
+      echo 'BLOCKED: Direct push to main/master. Use feature branches.' >&2
+      exit 2
+      ;;
+    *'git push'*'--force-with-lease'*)
+      exit 0
+      ;;
     *'git push'*'--force'*|\
     *'git push'*'-f'*)
-      echo 'BLOCKED: Direct push to main/master or force push. Use feature branches.' >&2
+      echo 'BLOCKED: Force push detected. Use --force-with-lease for safety.' >&2
       exit 2
       ;;
     *)

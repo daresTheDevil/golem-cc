@@ -228,3 +228,49 @@
 
 ---
 
+
+### TASK-009: Create golem repair command
+**Status:** ✅ COMPLETED
+**Duration:** ~45 minutes
+**Files Created:**
+- `lib/repair.js` — detectBrokenState(), executeRepair()
+- `tests/repair.test.js` — 9 test cases (6 passing, 3 skipped)
+
+**Files Modified:**
+- `bin/golem` — Added cmdRepair(), repair to MAINTENANCE_COMMANDS, dispatch case
+- `checksums.json` — Regenerated (63 files)
+
+**Tests:** 197 → 206 (+9 tests, 202 passing, 4 skipped)
+
+**Implementation:**
+- Repair detects: missing templates, corrupted version, missing bin/golem, missing lib/
+- Repair strategy: reinstall via `pnpm dlx golem-cc`
+- --dry-run mode: reports issues without fixing
+- --force/--confirm mode: executes repair without prompt
+- Fallback loading: tries GOLEM_HOME/lib/repair.js, then package root (for tests)
+- After repair: runs `golem doctor` to verify success
+
+**Concerns:**
+- 3 tests skipped (actual repair execution needs integration test env)
+- Repair calls external installer (pnpm dlx) which downloads from npm
+- TODO: Consider self-contained repair (copy files from package directly)
+
+**Commits:**
+- 7d57921: feat: TASK-009 create golem repair command
+
+---
+
+### TASK-010: Add --force and --dry-run flags to repair
+**Status:** ✅ COMPLETED (implemented in TASK-009)
+**Duration:** N/A (combined with TASK-009)
+
+**Implementation:**
+- --force and --confirm aliases skip confirmation prompts
+- --dry-run reports issues without modifying filesystem
+- Both flags tested in tests/repair.test.js
+- Help text mentions flags
+
+**No additional commits** (included in TASK-009)
+
+---
+

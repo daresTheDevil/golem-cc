@@ -92,6 +92,7 @@ const MAINTENANCE_COMMANDS = {
   update: 'Update golem to latest version',
   doctor: 'Run diagnostics',
   repair: 'Repair broken GOLEM_HOME installation',
+  changelog: 'Add entry to CHANGELOG.md',
   init: 'Initialize golem in a project',
   reset: 'Reset golem state for this project',
   eject: 'Remove golem from this project (keeps code)',
@@ -218,6 +219,34 @@ ${BOLD}Workflow:${NC} ${DIM}(run in order)${NC}`);
 
 function cmdVersion() {
   console.log(`golem v${getVersion()}`);
+}
+
+function cmdChangelog(args = []) {
+  // Try to load changelog lib
+  let changelog;
+  try {
+    changelog = require(path.join(GOLEM_HOME, 'lib', 'changelog.js'));
+  } catch (err) {
+    console.error(errors.formatError({
+      message: 'Changelog module not found',
+      context: {
+        expected: path.join(GOLEM_HOME, 'lib', 'changelog.js'),
+      },
+      suggestion: 'Run: golem repair',
+    }));
+    process.exit(1);
+  }
+
+  // Run changelog CLI
+  const result = changelog.run(args);
+
+  if (result.success) {
+    console.log(`${GREEN}✓${NC} ${result.message}`);
+    process.exit(0);
+  } else {
+    console.error(`${RED}✗${NC} ${result.message}`);
+    process.exit(1);
+  }
 }
 
 function cmdDoctor(args = []) {
@@ -966,6 +995,7 @@ switch (command) {
   case 'version': case '--version': case '-v': cmdVersion(); break;
   case 'doctor': cmdDoctor(args); break;
   case 'repair': cmdRepair(args); break;
+  case 'changelog': cmdChangelog(args); break;
   case 'init': cmdInit(args); break;
   case 'reset': cmdReset(); break;
   case 'eject': cmdEject(args); break;
